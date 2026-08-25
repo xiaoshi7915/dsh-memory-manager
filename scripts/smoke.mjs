@@ -96,6 +96,21 @@ async function main() {
   r(check('REST stats', typeof st.total_memories === 'number', JSON.stringify(st)))
   const lst = await jget('/api/memory/memories?limit=10')
   r(check('REST list', lst.total >= 1 && Array.isArray(lst.items), `total=${lst.total}`))
+  // P3：元数据 + SQL 真分页 + 搜索 offset
+  const meta = await jget('/api/memory/meta')
+  r(check('REST meta 会话/标签去重', Array.isArray(meta.sessions) && Array.isArray(meta.tags) && meta.total === lst.total,
+    `sessions=${meta.sessions?.length ?? '-'} tags=${meta.tags?.length ?? '-'} total=${meta.total}`))
+  const pg0 = await jget('/api/memory/memories?limit=1&offset=0')
+  const pg1 = await jget('/api/memory/memories?limit=1&offset=1')
+  r(check('REST 分页 offset 生效', Array.isArray(pg0.items) && Array.isArray(pg1.items) && pg0.items.length === 1 && pg1.items.length === 1 && pg0.items[0]?.id !== pg1.items[0]?.id && pg1.total === meta.total,
+    `pg0=${pg0.items?.[0]?.id} pg1=${pg1.items?.[0]?.id} total=${pg1.total}`))
+  const firstTag = meta.tags[0]?.tag || ''
+  const pgTag = await jget('/api/memory/memories?tag=' + encodeURIComponent(firstTag))
+  r(check('REST 分页 tag 过滤(SQL)', firstTag === '' || pgTag.total === meta.tags[0].count, `tag=${firstTag} total=${pgTag.total} expect=${meta.tags[0]?.count}`))
+  const so0 = await jpost('/api/memory/search', { query: '数据分析', top_k: 1, session_id: '*' })
+  const so1 = await jpost('/api/memory/search', { query: '数据分析', top_k: 1, session_id: '*', offset: 1 })
+  r(check('REST search offset 分页', so1.page?.offset === 1 && so1.total === so0.total && (so1.results.length === 0 || so1.results[0]?.id !== so0.results[0]?.id),
+    `total=${so1.total} top=${so0.results[0]?.id} vs ${so1.results[0]?.id ?? '(空)'}`))
   const sr = await jpost('/api/memory/search', { query: '我喜欢用什么语言做数据分析', session_id: 'other-sess' })
   r(check('REST search(cross-session global)', sr.results[0]?.content === '我喜欢用 Python 做数据分析' && sr.results[0]?.score > 0.85,
     `top=${sr.results[0]?.content ?? ''} score=${sr.results[0]?.score ?? '-'}`))

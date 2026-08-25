@@ -46,11 +46,12 @@ function keywordScores(engine, queryTerms, queryRaw) {
  * 检索入口。
  * @param {import('./index.mjs').MemoryEngine} engine
  * @param {string} query
- * @param {{topK?: number, threshold?: number, hybridWeight?: number, sessionId?: string, includeGlobal?: boolean}} opts
+ * @param {{topK?: number, threshold?: number, hybridWeight?: number, sessionId?: string, includeGlobal?: boolean, offset?: number}} opts
  */
 export async function search(engine, query, opts = {}) {
   const t0 = Date.now()
   const topK = Math.max(1, Math.floor(opts.topK ?? engine.config.long_term.retrieval_top_k ?? 5))
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0))
   const sessionId = opts.sessionId ?? 'default'
   const includeGlobal = opts.includeGlobal !== false && engine.config.global_memory.enabled !== false
 
@@ -64,10 +65,11 @@ export async function search(engine, query, opts = {}) {
   let threshold = opts.threshold ?? engine.config.long_term.similarity_threshold ?? 0.75
   if (degraded) threshold = Math.max(0.38, threshold * 0.5)
 
-  // 向量候选（扩大召回：取 topK * 8 或全部）。需重建索引时向量陈旧 → 不参与打分
+  // 向量候选（P3：召回池封顶 100，替代旧的"topK*8 无上限"；offset 分页时至少覆盖当前页）
+  const pool = Math.min(100, Math.max(topK * 8, 64, offset + topK))
   let vecMap = new Map()
   if (!needsReindex) {
-    const vectorHits = engine.vector.search(queryVec, Math.max(topK * 8, 64))
+    const vectorHits = engine.vector.search(queryVec, pool)
     vecMap = new Map(vectorHits.map((h) => [h.id, h.score]))
   }
 
@@ -108,7 +110,7 @@ export async function search(engine, query, opts = {}) {
   }
 
   results.sort((a, b) => b.score - a.score)
-  const top = results.slice(0, topK)
+  const top = results.slice(offset, offset + topK)
   for (const r of top) {
     const rec = engine.store.get(r.id)
     if (rec) engine.store.touch(rec.id)
@@ -117,5 +119,6 @@ export async function search(engine, query, opts = {}) {
     results: top,
     total: results.length,
     latency_ms: Date.now() - t0,
+    page: { offset, limit: topK, total: results.length },
   }
 }

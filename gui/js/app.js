@@ -63,9 +63,67 @@ const state = {
   memories: [],
   filters: { session: '', global: '', tag: '' },
   config: null,
+  browser: { page: 0, pageSize: 50, total: 0 }, // 记忆浏览分页（0-based）
+  search: { page: 0, pageSize: 5, total: 0 }, // 语义搜索分页（页大小 = Top-K）
 }
 
 /* ---------------- 工具函数 ---------------- */
+
+/** 总页数（至少 1）。 */
+function pageCount(total, size) {
+  const s = Math.max(1, Math.floor(size))
+  return Math.max(1, Math.ceil(total / s))
+}
+
+/**
+ * 渲染分页栏（P3）。page 0-based；窗口=当前页±2（含首尾 + 省略号）。
+ * @param {HTMLElement} container
+ * @param {{page:number, pageSize:number, total:number, sizes:number[], onGo:(p:number)=>void, onSize:(s:number)=>void}} cfg
+ */
+function renderPager(container, { page, pageSize, total, sizes, onGo, onSize }) {
+  if (!container) return
+  const pages = pageCount(total, pageSize)
+  const cur = Math.min(Math.max(0, page), pages - 1)
+  const nums = []
+  const lo = Math.max(0, cur - 2)
+  const hi = Math.min(pages - 1, cur + 2)
+  if (lo > 0) nums.push(0)
+  if (lo > 1) nums.push('…')
+  for (let i = lo; i <= hi; i++) nums.push(i)
+  if (hi < pages - 2) nums.push('…')
+  if (hi < pages - 1) nums.push(pages - 1)
+
+  container.hidden = pages <= 1
+  container.innerHTML = `
+    <span class="pg-info">共 ${total} 条 · 第 ${cur + 1}/${pages} 页</span>
+    <label class="pg-size">每页
+      <select data-role="pg-size">
+        ${sizes.map((s) => `<option value="${s}" ${s === pageSize ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>
+    </label>
+    <button class="pg-btn" data-go="prev" ${cur === 0 ? 'disabled' : ''}>‹</button>
+    ${nums.map((n) => (n === '…'
+      ? '<span class="pg-ellipsis">…</span>'
+      : `<button class="pg-btn${n === cur ? ' cur' : ''}" data-go="${n}">${n + 1}</button>`)).join('')}
+    <button class="pg-btn" data-go="next" ${cur >= pages - 1 ? 'disabled' : ''}>›</button>`
+  container.querySelector('[data-role="pg-size"]').onchange = (e) => onSize(Number(e.target.value))
+  container.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+    const v = b.dataset.go
+    const next = v === 'prev' ? cur - 1 : v === 'next' ? cur + 1 : Number(v)
+    if (next >= 0 && next < pages && next !== cur) onGo(next)
+  }))
+}
+
+/** 绑定记忆卡展开/收拢（浏览 + 搜索共用）。 */
+function bindMemCards(box) {
+  $$('.mem', box).forEach((el) => {
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('button')) return
+      el.classList.toggle('open')
+      el.querySelector('.mem-content').classList.toggle('clamped')
+    })
+  })
+}
 function memCard(m, { score } = {}) {
   const tags = (m.tags || []).map((t) => `<span class="chip">${esc(t)}</span>`).join(' ')
   const pct = score != null ? Math.round(score * 100) : null
@@ -116,24 +174,33 @@ async function renderBrowser() {
   box.innerHTML = spinner('正在加载记忆…')
   try {
     const f = state.filters
+    const b = state.browser
     const params = {}
     if (f.session) params.session = f.session
     if (f.global) params.global = f.global
     if (f.tag) params.tag = f.tag
-    const data = await api.memories({ ...params, limit: 200 })
+    params.offset = b.page * b.pageSize
+    params.limit = b.pageSize
+    const data = await api.memories(params)
     state.memories = data.items || []
+    b.total = data.total || 0
+    // 删除/过滤后当前页可能越界：回退一页再取
+    if (state.memories.length === 0 && b.total > 0 && b.page > 0) {
+      b.page -= 1
+      return renderBrowser()
+    }
     await loadStats()
     if (state.memories.length === 0) {
       box.innerHTML = emptyBox('暂无记忆', '添加记忆后，它们会按时间线展示在这里')
-      return
+    } else {
+      box.innerHTML = `<div class="mem-list">${state.memories.map((m) => memCard(m)).join('')}</div>`
+      bindMemCards(box)
     }
-    box.innerHTML = `<div class="mem-list">${state.memories.map((m) => memCard(m)).join('')}</div>`
-    $$('#browser-list .mem').forEach((el) => {
-      el.addEventListener('click', (ev) => {
-        if (ev.target.closest('button')) return
-        el.classList.toggle('open')
-        el.querySelector('.mem-content').classList.toggle('clamped')
-      })
+    renderPager($('#browser-pager'), {
+      page: b.page, pageSize: b.pageSize, total: b.total,
+      sizes: [20, 50, 100, 200],
+      onGo: (p) => { b.page = p; renderBrowser() },
+      onSize: (s) => { b.pageSize = s; b.page = 0; renderBrowser() },
     })
   } catch (e) {
     box.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
@@ -142,16 +209,18 @@ async function renderBrowser() {
 
 async function refreshFilters() {
   try {
-    const data = await api.memories({ limit: 500 })
-    const sessions = new Set(data.items.map((m) => m.session_id))
-    const tags = new Set(data.items.flatMap((m) => m.tags || []))
-    $('#f-session').innerHTML = '<option value="">全部会话</option>' + [...sessions].map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('')
-    $('#f-tags').innerHTML = '<span class="chip gray clickable active" data-tag="">全部</span>' + [...tags].map((t) => `<span class="chip clickable" data-tag="${esc(t)}">${esc(t)}</span>`).join('')
+    // P3：用 /meta 拿全量去重会话/标签，取代旧 limit:500 抽样（大库下会漏会话/标签）
+    const meta = await api.meta()
+    const sessions = (meta.sessions || []).map((s) => s.id)
+    const tags = (meta.tags || []).map((t) => t.tag)
+    $('#f-session').innerHTML = '<option value="">全部会话</option>' + sessions.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('')
+    $('#f-tags').innerHTML = '<span class="chip gray clickable active" data-tag="">全部</span>' + tags.map((t) => `<span class="chip clickable" data-tag="${esc(t)}">${esc(t)}</span>`).join('')
     $$('#f-tags .chip').forEach((c) => {
       c.addEventListener('click', () => {
         $$('#f-tags .chip').forEach((x) => x.classList.remove('active'))
         c.classList.add('active')
         state.filters.tag = c.dataset.tag
+        state.browser.page = 0
         renderBrowser()
       })
     })
@@ -159,10 +228,12 @@ async function refreshFilters() {
 }
 
 /* ---------------- 语义搜索面板 ---------------- */
-async function doSearch() {
+async function doSearch(opts = {}) {
   const query = $('#sq-input').value.trim()
   const box = $('#search-results')
-  if (!query) { box.innerHTML = emptyBox('输入检索内容', '例如：我喜欢用什么语言做数据分析'); return }
+  const pager = $('#search-pager')
+  if (!query) { box.innerHTML = emptyBox('输入检索内容', '例如：我喜欢用什么语言做数据分析'); pager.hidden = true; return }
+  if (!opts.keepPage) state.search.page = 0
   box.innerHTML = spinner('正在检索…')
   const btn = $('#sq-btn')
   busy(btn, true)
@@ -174,21 +245,25 @@ async function doSearch() {
     const thr = n('#sq-thr', 0.4)
     // GUI 是管理视图：默认搜全部会话（后端 session_id='*'），DSH agent 侧仍按真实会话隔离
     const sess = $('#sq-session').value.trim() || '*'
-    const res = await api.search(query, { top_k: topK, threshold: thr, session_id: sess, include_global: $('#sq-global').checked })
+    const s = state.search
+    s.pageSize = Math.max(1, Math.floor(topK))
+    // P3：offset 分页（Top-K 即每页条数）；后端召回池封顶 100，超出部分需提高 Top-K
+    const res = await api.search(query, { top_k: topK, threshold: thr, session_id: sess, include_global: $('#sq-global').checked, offset: s.page * s.pageSize })
     const ms = Math.round(performance.now() - t0)
+    s.total = res.total || 0
     if (res.results.length === 0) {
       box.innerHTML = `<div class="empty"><div class="big">🔍</div><div style="font-weight:600">未找到相关记忆</div><div class="hint">试试降低相似度阈值或换一种问法</div></div>`
-      return
-    }
-    box.innerHTML = `
+    } else {
+      box.innerHTML = `
       <div class="result-head"><span>共 ${res.total} 条</span><span>耗时 ${ms}ms</span></div>
       <div class="mem-list">${res.results.map((m) => memCard(m, { score: m.score })).join('')}</div>`
-    $$('#search-results .mem').forEach((el) => {
-      el.addEventListener('click', (ev) => {
-        if (ev.target.closest('button')) return
-        el.classList.toggle('open')
-        el.querySelector('.mem-content').classList.toggle('clamped')
-      })
+      bindMemCards(box)
+    }
+    renderPager(pager, {
+      page: s.page, pageSize: s.pageSize, total: s.total,
+      sizes: [5, 10, 20],
+      onGo: (p) => { s.page = p; doSearch({ keepPage: true }) },
+      onSize: (sz) => { s.pageSize = sz; $('#sq-topk').value = sz; s.page = 0; doSearch({ keepPage: true }) },
     })
   } catch (e) {
     box.innerHTML = `<div class="alert err">检索失败：${esc(e.message)}</div>`
@@ -393,10 +468,10 @@ function initNav() {
 }
 
 function initEvents() {
-  $('#f-session').addEventListener('change', (e) => { state.filters.session = e.target.value; renderBrowser() })
-  $$('input[name="f-global"]').forEach((r) => r.addEventListener('change', (e) => { state.filters.global = e.target.value; renderBrowser() }))
-  $('#browse-refresh').addEventListener('click', () => { renderBrowser(); refreshFilters(); loadStats(); toast('已刷新') })
-  $('#sq-btn').addEventListener('click', doSearch)
+  $('#f-session').addEventListener('change', (e) => { state.filters.session = e.target.value; state.browser.page = 0; renderBrowser() })
+  $$('input[name="f-global"]').forEach((r) => r.addEventListener('change', (e) => { state.filters.global = e.target.value; state.browser.page = 0; renderBrowser() }))
+  $('#browse-refresh').addEventListener('click', () => { state.browser.page = 0; renderBrowser(); refreshFilters(); loadStats(); toast('已刷新') })
+  $('#sq-btn').addEventListener('click', () => doSearch())
   $('#sq-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
   $('#st-thr').addEventListener('input', (e) => { $('#st-thr-val').textContent = Number(e.target.value).toFixed(2) })
   $('#st-hybrid').addEventListener('input', (e) => { $('#st-hybrid-val').textContent = Number(e.target.value).toFixed(2) })

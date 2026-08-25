@@ -117,3 +117,12 @@
 | ✅ bareSearch 别名 | `config.compat.bareSearch=true` 时 best-effort 注册旧名 memory_*（被 layered 占用即 try/catch 跳过，绝不致命）；`DEFAULT_CONFIG` 增加 `compat` 段 |
 | ✅ 验证 | 集成 **34/34**（原 26 + 7 别名注册 + 1 别名执行，真实 Cordis 装载）；smoke 26/26 · P0 30/30 · verify 7/7 |
 | 📝 文档 | contracts/tools.md、TASK-spec/senior、ARCHITECTURE、gui/DESIGN、dsh-research 同步 mm_* |
+
+### 第六轮：共存 P2 事件协调 + P3 GUI 真分页（2026-08-25，接共存方案 ②③）
+| 项 | 落地 |
+|---|---|
+| ✅ P2 事件协调 | `config.hooks.sessionEventSummarize = auto\|on\|off`（默认 auto）：导出 `detectLayeredMemory(ctx, config)`（cordis 注册表含 `dsh-memory`/layered 为权威信号；工具探测 `memory_search` 仅在本插件 bareSearch 关闭时兜底，避免误判自身别名）+ `resolveEventMode`；auto 在场即让位（不短期捕获、不自动摘要）；on 强制接管；off 只关自动摘要。事件钩子按 captureEnabled/summarizeEnabled 门控 |
+| ✅ P3 服务端真分页 | `store.page()` SQL LIMIT/OFFSET + 条件过滤 + COUNT（tag 用 `json_each`，node:sqlite 命名参数按语句分离）；`store.meta()` 去重会话/标签；`GET /api/memory/meta`；search 支持 `offset`，召回池封顶 100 |
+| ✅ P3 GUI | 记忆浏览 + 搜索结果分页栏（页大小 20/50/100/200，搜索页大小=Top-K，页码窗口±2+省略号）；`refreshFilters` 改用 `/meta` 去 limit:500 抽样缺陷；过滤/删除后页码越界自动回退 |
+| ✅ 验证 | 集成 **40/40**（+6 P2：探测命中/auto 让位/on/off/无 layered 全开/事件未写短期）；smoke **30/30**（+4 P3：meta/分页 offset/tag SQL/search offset）；P0 30/30 · verify 7/7 · GUI JS `node --check` 通过 |
+| ⚠️ 修复 | ① `store.page` COUNT 传多余命名参数 → where/分页参数分离；② mm_search 输出 schema 缺 `page` → 补 page 字段；③ FakeLayered 缺 `inject:['tools']` 且裸 schema 缺 additionalProperties → 补；④ Context 封闭不可附加属性 → 可观测性走导出函数 |

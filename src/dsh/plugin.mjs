@@ -58,10 +58,11 @@ const TOOL_DEFS = [
     description: '基于查询文本检索最相关的 K 条记忆（语义相似度，含关键词+向量混合）。用户说"我之前说过…/关于…你还记得吗"时调用。',
     parameters: {
       query: { type: 'string', required: true, description: '检索查询文本' },
-      top_k: int('返回条数，默认按配置'),
+      top_k: int('返回条数，默认按配置（搜索分页时即每页条数）'),
       threshold: num('相似度阈值，默认按配置'),
       session_id: str('会话 ID，缺省为当前会话'),
       include_global: bool('是否包含全局记忆，默认 true'),
+      offset: int('分页偏移（P3），默认 0'),
     },
     output: obj({
       results: {
@@ -77,6 +78,11 @@ const TOOL_DEFS = [
       },
       total: int('命中条数'),
       latency_ms: int('耗时毫秒'),
+      page: obj({
+        offset: int('本页偏移'),
+        limit: int('每页条数'),
+        total: int('命中总数'),
+      }),
     }),
     render(args, v) {
       const lines = v.results.length
@@ -319,6 +325,55 @@ export function buildInjection(engine, sessionId, userInput) {
   }
 }
 
+/**
+ * P2：探测 dsh-layered-memory 是否已在本进程注册（事件协调用）。
+ * 信号：① cordis 注册表里有名含 layered / 名为 dsh-memory 的插件（权威）；
+ *       ② 兜底——裸工具 memory_search 已被注册。仅当本插件未开 bareSearch 时可用
+ *         （否则 memory_search 可能是我们自己的 bare 别名，无法区分 layered）。
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ * @param {object} [config] 插件配置（读 compat.bareSearch 判断工具探测是否可信）
+ * @returns {boolean}
+ */
+export function detectLayeredMemory(ctx, config = {}) {
+  try {
+    const reg = ctx?.registry
+    if (reg && typeof reg === 'object') {
+      for (const entry of Object.values(reg)) {
+        const name = entry?.name ?? entry?.id ?? ''
+        if (typeof name === 'string' && (/layered/i.test(name) || name === 'dsh-memory')) return true
+      }
+    }
+  } catch { /* 注册表不可读 → 走工具探测 */ }
+  if (config?.compat?.bareSearch !== true) {
+    try {
+      if (ctx?.tools?.get?.('memory_search')) return true
+    } catch { /* 忽略 */ }
+  }
+  return false
+}
+
+/**
+ * P2：解析会话事件协调模式。
+ * mode（config.hooks.sessionEventSummarize）：auto|on|off
+ * - auto（默认）：启动探测 layered，在场 → 让位（capture/summarize 全关）；缺席 → 全开
+ * - on：强制接管（无视 layered，capture + summarize 全开）
+ * - off：关闭自动摘要（capture 保留，mm_get_recent 仍需短期记忆）
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ * @param {object} [config]
+ */
+export function resolveEventMode(ctx, config = {}) {
+  const mode = config?.hooks?.sessionEventSummarize ?? 'auto'
+  const layered = detectLayeredMemory(ctx, config)
+  if (mode === 'on') return { mode, layered, captureEnabled: true, summarizeEnabled: true, reason: 'force' }
+  if (mode === 'off') return { mode, layered, captureEnabled: true, summarizeEnabled: false, reason: 'disabled' }
+  return {
+    mode, layered,
+    captureEnabled: !layered,
+    summarizeEnabled: !layered,
+    reason: layered ? 'yield-to-layered' : 'standalone',
+  }
+}
+
 export function apply(ctx, config = {}) {
   const enginePromise = MemoryEngine.create({}).catch((e) => {
     throw new Error(`dsh-memory-manager: 初始化记忆引擎失败: ${e.message}`)
@@ -327,6 +382,14 @@ export function apply(ctx, config = {}) {
   enginePromise.then((e) => { engineHolder.engine = e })
   // LLM 摘要护栏读取运行中引擎的配置（llm_guardrails），引擎就绪前用缺省值
   const llmSummarize = makeLlmSummarize(ctx, () => engineHolder.engine?.config ?? null)
+
+  // P2 事件协调：启动探测 dsh-layered-memory，决定短期捕获/自动摘要是否让位（避免双写/重复摘要）
+  // mode 读插件配置 config.hooks.sessionEventSummarize（auto|on|off），缺省 auto。
+  // （可观测性走导出函数 resolveEventMode/detectLayeredMemory；Context 为封闭对象不可附加属性。）
+  const eventMode = resolveEventMode(ctx, config)
+  if (eventMode.layered) {
+    console.warn(`[dsh-memory-manager] 检测到 dsh-layered-memory 在场，事件协调=${eventMode.mode}（${eventMode.reason}）：${eventMode.captureEnabled ? '短期捕获开' : '短期捕获让位'} / ${eventMode.summarizeEnabled ? '自动摘要开' : '自动摘要让位'}`)
+  }
 
   // 1) 通过真实 defineTool + ctx.tools.register 注册 7 个工具（mm_* 前缀，P1 共存）
   for (const spec of TOOL_DEFS) {
@@ -413,10 +476,12 @@ export function apply(ctx, config = {}) {
       role = 'assistant'
       content = messageText(event.data?.message?.content)
     }
-    if (role && content) {
+    // P2 让位：layered 在场（auto）时短期捕获关闭，避免同一对话被双方各存一份
+    if (role && content && eventMode.captureEnabled) {
       await engine.shortTerm.append(sid, role, content, { maxLines: engine.config.short_term.max_messages })
     }
-    if (event.type === 'user/message') {
+    // P2 让位：layered 在场（auto）或 off 时自动摘要关闭（后者仍保留短期捕获）
+    if (event.type === 'user/message' && eventMode.summarizeEnabled) {
       const count = await engine.shortTerm.count(sid)
       const threshold = engine.config.long_term.auto_summarize_threshold
       const prev = lastSummarizedCount.get(sid) ?? 0

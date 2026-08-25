@@ -153,21 +153,20 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, await engine.stats())
     return
   }
-  // 记忆列表（时间线）
+  // 记忆列表（时间线，P3：SQL 级 LIMIT/OFFSET 真分页）
   if (method === 'GET' && rel === 'memories') {
     const session = url.searchParams.get('session') ?? undefined
     const g = url.searchParams.get('global')
     const tag = url.searchParams.get('tag') ?? undefined
     const limit = Math.max(1, Math.min(500, Number(url.searchParams.get('limit')) || 100))
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0)
-    let items = engine.store.list()
-    if (session) items = items.filter((r) => r.session_id === session)
-    if (g === '1') items = items.filter((r) => r.is_global)
-    if (g === '0') items = items.filter((r) => !r.is_global)
-    if (tag) items = items.filter((r) => r.tags.includes(tag))
-    const total = items.length
-    items = items.slice(offset, offset + limit).map((r) => ({ ...r, content: engine.decryptContent(r) }))
-    sendJson(res, 200, { items, total })
+    const { items, total } = engine.store.page({ offset, limit, session, global: g, tag })
+    sendJson(res, 200, { items: items.map((r) => ({ ...r, content: engine.decryptContent(r) })), total })
+    return
+  }
+  // 元数据（P3：去重会话 + 标签，取代 GUI 用 limit:500 抽样的缺陷）
+  if (method === 'GET' && rel === 'meta') {
+    sendJson(res, 200, engine.store.meta())
     return
   }
   // 单条
@@ -196,12 +195,13 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, r)
     return
   }
-  // 检索
+  // 检索（P3：支持 offset 分页，page 字段返回 offset/limit/total）
   if (method === 'POST' && rel === 'search') {
     const body = await readJsonBody(req)
     if (!body.query) { sendError(res, 'VALIDATION_ERROR', '缺少 query', 400); return }
     sendJson(res, 200, await engine.search(body.query, {
-      topK: body.top_k, threshold: body.threshold, sessionId: body.session_id ?? 'default', includeGlobal: body.include_global,
+      topK: body.top_k, threshold: body.threshold, sessionId: body.session_id ?? 'default',
+      includeGlobal: body.include_global, offset: body.offset,
     }))
     return
   }

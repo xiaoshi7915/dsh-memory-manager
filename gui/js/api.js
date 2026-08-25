@@ -60,6 +60,7 @@ export class MemoryApi {
   // ---- 业务方法 ----
   healthz() { return this.get('/api/memory/healthz') }
   stats() { return this.get('/api/memory/stats') }
+  meta() { return this.get('/api/memory/meta') }
   memories(params = {}) {
     const q = new URLSearchParams()
     for (const k of Object.keys(params)) if (params[k] !== undefined && params[k] !== '') q.set(k, params[k])
@@ -70,7 +71,7 @@ export class MemoryApi {
   deleteMemory(id) { return this.del(`/api/memory/memories/${id}`) }
   deleteBatch(body) { return this.post('/api/memory/memories/delete', body) }
   search(query, opts = {}) {
-    return this.post('/api/memory/search', { query, top_k: opts.top_k, threshold: opts.threshold, session_id: opts.session_id, include_global: opts.include_global })
+    return this.post('/api/memory/search', { query, top_k: opts.top_k, threshold: opts.threshold, session_id: opts.session_id, include_global: opts.include_global, offset: opts.offset })
   }
   recent(session, n) { return this.get(`/api/memory/recent?session=${encodeURIComponent(session || 'default')}${n ? `&n=${n}` : ''}`) }
   summarize(body) { return this.post('/api/memory/summarize', body) }

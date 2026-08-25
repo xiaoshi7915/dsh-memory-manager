@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Service } from '@deepseek-ai/cordis'
-import { ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { ToolRuntime, defineTool } from '@deepseek-ai/dsh-tools'
 
 process.env.DSH_MEMORY_DIR = mkdtempSync(join(tmpdir(), 'dsh-mem-verify-'))
 
@@ -180,6 +180,59 @@ check('mm_update_importance 更新生效', !impRes.isError && impRes.value?.new_
 // ---------- C) 路由 ----------
 check('webServer 注册 /api/memory 前缀路由', Array.isArray(ctx.webServer.routes) && ctx.webServer.routes.some((r) => r.kind === 'prefix' && r.path === '/api/memory'))
 check('webServer 注册 /memory-manager GUI 托管路由', Array.isArray(ctx.webServer.routes) && ctx.webServer.routes.some((r) => r.kind === 'prefix' && r.path === '/memory-manager'))
+
+// ---------- D) P2 事件协调：layered 在场 → 自动让位 ----------
+// 独立 Context + 独立数据目录（两引擎各持一把锁，互不冲突）。
+const layeredDir = mkdtempSync(join(tmpdir(), 'dsh-mem-layered-'))
+const savedMemDir = process.env.DSH_MEMORY_DIR
+process.env.DSH_MEMORY_DIR = layeredDir
+const ctx2 = new Context()
+await ctx2.plugin(SystemPromptStub)
+await ctx2.plugin(WebServerStub)
+await ctx2.plugin(SessionsStub)
+await ctx2.plugin(ToolRuntime)
+// 桩 layered：注册裸名 memory_search（无 bare 别名时该名只可能来自 layered）→ 触发探测命中
+const FakeLayered = {
+  name: 'dsh-memory',
+  inject: ['tools'],
+  apply(fctx) {
+    fctx.tools.register(defineTool({
+      name: 'memory_search', description: 'dsh-layered-memory 的 memory_search（桩）',
+      parameters: {}, output: { schema: { type: 'object', additionalProperties: false, properties: {} }, render: () => '' },
+    }))
+  },
+}
+await ctx2.plugin(FakeLayered)
+await ctx2.plugin(plugin, {}) // auto 模式（默认）
+process.env.DSH_MEMORY_DIR = savedMemDir
+
+const evLayered = plugin.resolveEventMode(ctx2, {})
+check('P2 layered 探测命中', evLayered.layered === true, JSON.stringify(evLayered))
+check('P2 auto 让位：短期捕获/自动摘要关闭',
+  evLayered.captureEnabled === false && evLayered.summarizeEnabled === false && evLayered.reason === 'yield-to-layered',
+  JSON.stringify(evLayered))
+check('P2 on 强制接管（无视 layered）',
+  plugin.resolveEventMode(ctx2, { hooks: { sessionEventSummarize: 'on' } }).captureEnabled === true
+  && plugin.resolveEventMode(ctx2, { hooks: { sessionEventSummarize: 'on' } }).summarizeEnabled === true, '')
+check('P2 off 仅关自动摘要（保留短期捕获）',
+  plugin.resolveEventMode(ctx2, { hooks: { sessionEventSummarize: 'off' } }).summarizeEnabled === false
+  && plugin.resolveEventMode(ctx2, { hooks: { sessionEventSummarize: 'off' } }).captureEnabled === true, '')
+check('P2 无 layered 时 auto 全开（bareSearch=true 不误判自身别名）',
+  plugin.resolveEventMode(ctx, { compat: { bareSearch: true } }).layered === false
+  && plugin.resolveEventMode(ctx, { compat: { bareSearch: true } }).captureEnabled === true
+  && plugin.resolveEventMode(ctx, { compat: { bareSearch: true } }).summarizeEnabled === true, '')
+
+// 行为验证：layered 在场（auto）→ 会话事件不写短期记忆
+await ctx2.parallel('session/event', { id: 'sess-L' }, {
+  type: 'user/message',
+  data: { id: 'lu1', role: 'user', content: [{ type: 'text', text: 'layered 在场时本插件不应捕获此条' }], source: { kind: 'plugin', plugin: 'test' } },
+})
+const recentL = await ctx2.tools.execute({
+  callId: 'v-recent-L', name: 'mm_get_recent', signal: sig(10000),
+  arguments: { session_id: 'sess-L' },
+})
+check('P2 让位生效：事件未写短期', !recentL.isError && (recentL.value?.messages?.length ?? 0) === 0,
+  `messages=${JSON.stringify(recentL.isError ? null : recentL.value?.messages)}`)
 
 // 注：Cordis Context 无公开 dispose/stop；脚本结束由进程回收。
 

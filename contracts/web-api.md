@@ -9,11 +9,12 @@
 |---|---|---|---|---|
 | GET | `/api/memory/healthz` | 健康检查 | — | `{"ok":true,"version":"1.0.0","embedding_status":"..."}` |
 | GET | `/api/memory/stats` | 统计 | — | `{"total_memories":150,"short_term_tokens":2048,"long_term_count":142,"storage_size_mb":12.5,"last_compacted":"...","embedding_model":"local","embedding_status":"completed","needs_reindex":false}` |
-| GET | `/api/memory/memories` | 记忆列表（时间线） | query：`session`、`global`(`1`/`0`)、`tag`、`limit`(默认100)、`offset` | `{"items":[{id,content,tags,importance,is_global,session_id,created_at,score?}],"total":N}` |
+| GET | `/api/memory/memories` | 记忆列表（时间线，**P3：SQL 级 LIMIT/OFFSET 真分页**） | query：`session`、`global`(`1`/`0`)、`tag`、`limit`(默认100，上限500)、`offset`(默认0) | `{"items":[{id,content,tags,importance,is_global,session_id,created_at,score?}],"total":N}`（total=满足过滤的完整条数） |
+| GET | `/api/memory/meta` | **P3：元数据**（去重会话 + 标签，供 GUI 筛选器，取代 limit:500 抽样） | — | `{"sessions":[{id,count}],"tags":[{tag,count}],"total":N}` |
 | GET | `/api/memory/memories/:id` | 单条详情（完整内容） | — | 单条 MemoryRecord（content 解密后完整文本） |
 | DELETE | `/api/memory/memories/:id` | 删除单条 | — | `{"deleted_count":1,"affected_sessions":[...],"freed_tokens":N}` |
 | POST | `/api/memory/memories/delete` | 条件批量删除 | `{"ids":[...]? ,"conditions":{session_id?,tag?,is_global?,older_than?,importance_le?}}` | `{"deleted_count":N,"affected_sessions":[...],"freed_tokens":N}` |
-| POST | `/api/memory/search` | 语义检索 | `{"query":"...","top_k":5,"threshold":0.75,"session_id":"...","include_global":true}` | `{"results":[{id,content,score,session_id,timestamp,is_global}],"total":N,"latency_ms":45}` |
+| POST | `/api/memory/search` | 语义检索（**P3：支持 offset 分页**；Top-K 即每页条数，召回池封顶 100） | `{"query":"...","top_k":5,"threshold":0.75,"session_id":"...","include_global":true,"offset":0}` | `{"results":[{id,content,score,session_id,timestamp,is_global}],"total":N,"latency_ms":45,"page":{offset,limit,total}}` |
 | GET | `/api/memory/recent` | 短期记忆上下文 | query：`session`、`n` | `{"messages":[{"role","content"}],"token_count":2048,"window_size":10,"truncated":false}` |
 | POST | `/api/memory/summarize` | 生成摘要并入库 | `{"session_id":"...","count":24}` | `{"summary":"...","memory_id":"<uuid>","compressed_from":24,"saved_tokens":1800}` |
 | PATCH | `/api/memory/memories/:id/importance` | 修改重要性 | `{"score":9}` | `{"memory_id":"<uuid>","old_score":5,"new_score":9}` |

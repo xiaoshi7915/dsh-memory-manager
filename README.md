@@ -18,7 +18,7 @@
 | 🔒 会话隔离 | 默认仅本会话可见；`is_global` 记忆跨会话共享，可整体开关 |
 | 🔐 安全 | 默认 AES-256-GCM 加密存储（主密码 scrypt 派生密钥） |
 | ⇅ 导入导出 | JSON / JSONL 备份，合并 / 替换两种恢复模式 |
-| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置 四面板，深浅双主题 |
+| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置 四面板，深浅双主题；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K） |
 
 ---
 
@@ -75,15 +75,16 @@ npm run serve          # 默认 http://127.0.0.1:4599，PORT 可覆盖
 ### 作为 DSH 插件运行
 
 插件入口 `src/dsh/plugin.mjs`（`export const name / inject / apply`），基于真实 DSH API 实现：
-- 通过 `@deepseek-ai/dsh-tools` 的 `defineTool` + `ctx.tools.register` 注册 7 个 Agent 工具（含完整 `parameters` 参数 schema 与 `output` 输出 schema/渲染）
-- 通过 `ctx.webServer.register` 挂载 `/api/memory/*` REST 路由
+- 通过 `@deepseek-ai/dsh-tools` 的 `defineTool` + `ctx.tools.register` 注册 7 个 Agent 工具（对外名 `mm_*`；`compat.bareSearch=true` 时 best-effort 额外注册旧名 `memory_*` 别名，被他人占用则跳过）
+- 通过 `ctx.webServer.register` 挂载 `/api/memory/*` REST 路由（记忆列表 SQL 级分页；`/api/memory/meta` 返回去重会话/标签；搜索支持 `offset` 分页）
 - 通过 `ctx.on('session/event')` 监听会话事件：写入短期记忆、超阈值自动摘要
 - 通过 `ctx.get('llm')` 接入真实 LLM 生成式摘要（`ctx.llm.stream` + `BlockAssembler`），失败自动回退本地抽取式
+- **P2 事件协调**（与 dsh-layered-memory 共存）：`config.hooks.sessionEventSummarize = auto|on|off`，默认 `auto` —— 启动探测 layered（cordis 注册表含 `dsh-memory`/layered，或裸工具 `memory_search` 已被注册且本插件未开 bareSearch），在场即让位（不短期捕获、不自动摘要），避免双写/重复摘要；`on` 强制接管，`off` 只关自动摘要（保留短期捕获）
 
 **装载与验证**（在 DSH workspace 内）：本项目 `node_modules/@deepseek-ai/{cordis,dsh-tools,dsh-llm}` 为指向 DSH checkout 真实包目录的 junction，使插件可用 DSH 的包树裸导入加载。
 
 ```bash
-npm run integration   # scripts/dsh-integration.mjs：真实 Cordis + ToolRuntime 装载插件，26/26 通过
+npm run integration   # scripts/dsh-integration.mjs：真实 Cordis + ToolRuntime 装载插件，40/40 通过
 ```
 
 **从 GitHub 一键安装（推荐，发布后可用）**：仓库声明了 `dsh.bundle` 清单（`package.json` → `cordis.patch.yml`），因此可直接用 DSH 的插件命令安装：
@@ -152,6 +153,10 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 | | `master_password` | `''` | 主密码（scrypt 派生密钥） |
 | | `api_token` | `''` | Web API 可选鉴权 |
 | `global_memory` | `enabled` | true | 跨会话全局记忆开关 |
+| `compat` | `bareSearch` | false | true=额外 best-effort 注册旧名 `memory_*` 别名（与 layered 共存；被他人占用则跳过） |
+| `hooks` | `sessionEventSummarize` | `auto` | 会话事件协调：`auto`（默认，探测 layered，在场即让位）/ `on`（强制接管）/ `off`（关自动摘要，保留短期捕获） |
+
+> `compat` / `hooks` 段的**生效值读插件配置**（cordis.patch.yml 的 `config.compat.*` / `config.hooks.*`），本表仅作 schema 与文档记录。
 
 `long_term.llm_guardrails` 子项（生成式摘要的 LLM 成本护栏，超出自动回退本地抽取式摘要）：
 
@@ -167,7 +172,7 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 
 ## Web API（`/api/memory`）
 
-`healthz` / `stats` / `memories`(GET, 列表) / `memories/:id`(GET/DELETE) / `memories/delete`(批量) / `search` / `recent` / `summarize` / `memories/:id/importance`(PATCH) / `config`(GET/POST) / `export?format=json|jsonl` / `import` / `cleanup`。详见 [`contracts/web-api.md`](contracts/web-api.md)。
+`healthz` / `stats` / `meta` / `memories`(GET, 列表, SQL 分页) / `memories/:id`(GET/DELETE) / `memories/delete`(批量) / `search`(支持 offset 分页) / `recent` / `summarize` / `memories/:id/importance`(PATCH) / `config`(GET/POST) / `export?format=json|jsonl` / `import` / `cleanup`。详见 [`contracts/web-api.md`](contracts/web-api.md)。
 
 ---
 
@@ -175,7 +180,7 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 
 - **零运行时依赖**：核心用纯 ESM + Node 内置模块（`node:sqlite`、`crypto`、`http`），离线可用。
 - **降级嵌入**：本地哈希 n-gram 向量（FNV-1a，512 维）作为兜底；配置 `@huggingface/transformers` 或 OpenAI 后自动升级。
-- **混合检索**：候选集 = 向量 Top-K×8 ∪ 关键词命中，融合打分后按阈值过滤、Top-K 截断，并按会话隔离。
+- **混合检索**：候选集 = 向量召回（P3 起封顶 100）∪ 关键词命中，融合打分后按阈值过滤、Top-K 截断（支持 offset 分页），并按会话隔离。
 - **倒排索引**：内存 `term → {id, freq}` 增量索引（启动构建一次，增删/导入实时维护；与存储失步时自愈重建），关键词检索从全表扫描降到命中集——2000 条下检索平均 ~104ms、峰值 <170ms。
 - **重建索引**：更换嵌入模型后点「重建索引」按新模型对全库重嵌入并覆写向量索引；重建完成前检索自动降级为关键词匹配（不报错、不返回旧模型乱序结果）。
 - **明文缓存**：搜索高频解密场景以 `id → 明文` 内存缓存加速。

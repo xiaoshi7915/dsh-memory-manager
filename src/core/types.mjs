@@ -68,6 +68,11 @@ export const DEFAULT_CONFIG = Object.freeze({
   compat: {
     bareSearch: false, // true=额外 best-effort 注册旧名 memory_* 别名（被他人占用则跳过）
   },
+  // 会话事件协调（P2；生效值读插件配置 cordis config.hooks.sessionEventSummarize）
+  hooks: {
+    // auto=启动探测 layered，在场则让位（不自动摘要、不短期捕获）；on=强制接管；off=关闭自动摘要
+    sessionEventSummarize: 'auto',
+  },
 })
 
 /** SQLite memories 建表语句。 */

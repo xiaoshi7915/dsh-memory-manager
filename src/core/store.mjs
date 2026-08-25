@@ -89,6 +89,38 @@ export class MemoryStore {
     return rows.map(rowToRecord).filter(Boolean)
   }
 
+  /**
+   * SQL 级分页查询（P3 真分页）：条件过滤 + 计数在数据库层完成，
+   * 取代"全量 list → JS 过滤 → 切片"的假分页（大数据量下 O(全库)）。
+   * @param {{offset?: number, limit?: number, session?: string, global?: '0'|'1', tag?: string}} q
+   * @returns {{items: Array, total: number}} total 为满足条件的完整条数（不受分页影响）
+   */
+  page({ offset = 0, limit = 100, session, global, tag } = {}) {
+    const where = []
+    const whereParams = {}
+    if (session) { where.push('session_id = @session'); whereParams.session = session }
+    if (global === '1') where.push('is_global = 1')
+    else if (global === '0') where.push('is_global = 0')
+    if (tag) { where.push('EXISTS (SELECT 1 FROM json_each(memories.tags) WHERE value = @tag)'); whereParams.tag = tag }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    // COUNT 只传 where 参数；分页查询额外带 lim/off（node:sqlite 不允许多余命名参数）
+    const total = Number(this.db.prepare(`SELECT COUNT(*) AS c FROM memories ${whereSql}`).get(whereParams).c ?? 0)
+    const pageParams = { ...whereParams, lim: Math.max(1, Math.min(500, limit)), off: Math.max(0, Math.floor(offset)) }
+    const rows = this.db.prepare(`SELECT * FROM memories ${whereSql} ORDER BY created_at DESC LIMIT @lim OFFSET @off`).all(pageParams)
+    return { items: rows.map(rowToRecord).filter(Boolean), total }
+  }
+
+  /** 元数据：去重会话 + 标签（P3 取代 GUI 用 limit:500 抽样的缺陷）。 */
+  meta() {
+    const sessions = this.db
+      .prepare('SELECT session_id AS id, COUNT(*) AS count FROM memories GROUP BY session_id ORDER BY count DESC')
+      .all()
+    const tags = this.db
+      .prepare('SELECT value AS tag, COUNT(*) AS count FROM memories, json_each(memories.tags) GROUP BY value ORDER BY count DESC')
+      .all()
+    return { sessions, tags, total: this.count() }
+  }
+
   count() {
     const row = this.db.prepare('SELECT COUNT(*) AS c FROM memories').get()
     return Number(row?.c ?? 0)

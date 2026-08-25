@@ -259,6 +259,23 @@ html[data-theme='dark'] .alert.ok { background: #123325; color: #57d4a2; }
 .stat .num { font-size: 22px; font-weight: 700; }
 .stat .lbl { font-size: 12px; color: var(--text-3); }
 
+/* 分页栏（P3 真分页） */
+.pager {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--text-2);
+}
+.pager .pg-info { margin-right: auto; }
+.pager .pg-size select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 12px; }
+.pager .pg-btn {
+  min-width: 28px; height: 28px; padding: 0 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel); color: var(--text); cursor: pointer; font-size: 12px;
+}
+.pager .pg-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pager .pg-btn:disabled { opacity: 0.4; cursor: default; }
+.pager .pg-btn.cur { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.pager .pg-ellipsis { color: var(--text-3); padding: 0 2px; }
+
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
