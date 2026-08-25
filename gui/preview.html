@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🧠 记忆管理 · 预览（dsh-memory-manager）</title>
+<style>
+:root{
+  --bg:#f4f6fb;--panel:#ffffff;--panel-2:#f8fafd;--border:#e3e8f0;--text:#1c2333;--text-2:#5a6478;--text-3:#8a93a6;
+  --accent:#4f6ef7;--accent-2:#6a85ff;--accent-soft:#eef1ff;--danger:#e5484d;--ok:#2f9e6e;--warn:#d97706;
+  --shadow:0 1px 3px rgba(28,35,51,.06),0 6px 20px rgba(28,35,51,.05);--radius:12px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+html[data-theme='dark']{
+  --bg:#0f1420;--panel:#171d2c;--panel-2:#1d2434;--border:#26304a;--text:#e8ecf6;--text-2:#9aa6bd;--text-3:#67748c;
+  --accent:#6a85ff;--accent-2:#8aa0ff;--accent-soft:#20294a;--shadow:0 1px 3px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.55}
+.app{display:flex;height:100vh}
+.sidebar{width:232px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px;gap:4px}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:8px 10px 16px;font-size:16px;font-weight:700}
+.sidebar .brand .emoji{font-size:22px}
+.sidebar .nav{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;color:var(--text-2);user-select:none}
+.sidebar .nav:hover{background:var(--panel-2);color:var(--text)}
+.sidebar .nav.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.sidebar .nav .icon{width:18px;text-align:center}
+.sidebar .foot{margin-top:auto;padding:10px 12px;color:var(--text-3);font-size:12px}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-dot.on{background:var(--ok)}.status-dot.off{background:var(--warn)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.topbar{height:56px;display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--border)}
+.topbar h1{font-size:16px;margin:0;font-weight:650}
+.topbar .spacer{flex:1}
+.content{flex:1;overflow:auto;padding:22px}
+.panel{display:none}.panel.active{display:block}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.toolbar .grow{flex:1}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:14px}
+.card h3{margin:0 0 12px;font-size:14px}
+input[type='text'],input[type='number'],input[type='password'],select,textarea{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+input[type='range']{accent-color:var(--accent)}
+label.field{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)}
+label.field input,label.field select{font-size:13px;color:var(--text)}
+.f-row{display:flex;gap:12px;flex-wrap:wrap}
+.f-row>*{flex:1;min-width:150px}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+.btn:hover{background:var(--accent-2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--text-2);border:1px solid var(--border)}
+.btn.ghost:hover{background:var(--panel-2);color:var(--text)}
+.btn.danger{background:var(--danger)}
+.btn.sm{padding:5px 10px;font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:2px 9px;font-size:12px}
+.chip.gray{background:var(--panel-2);color:var(--text-3)}
+.chip.clickable{cursor:pointer;border:1px solid transparent}
+.chip.clickable:hover{border-color:var(--accent)}
+.chip.clickable.active{background:var(--accent);color:#fff}
+.mem-list{display:flex;flex-direction:column;gap:10px}
+.mem{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;cursor:pointer;transition:border-color .15s}
+.mem:hover{border-color:var(--accent)}
+.mem .mem-top{display:flex;align-items:flex-start;gap:10px}
+.mem .mem-content{flex:1;white-space:pre-wrap;word-break:break-word}
+.mem .mem-content.clamped{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mem .mem-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;color:var(--text-3);font-size:12px}
+.mem .mem-meta .sess{color:var(--text-2)}
+.score-track{height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;width:90px}
+.score-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#3456e0,var(--accent-2));box-shadow:0 0 0 1px rgba(255,255,255,.25) inset}
+.mem .mem-detail{border-top:1px dashed var(--border);margin-top:10px;padding-top:10px;font-size:12px;color:var(--text-2);display:none}
+.mem.open .mem-detail{display:block}
+.mem .mem-detail .d-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.badge{font-size:11px;border-radius:6px;padding:1px 7px}
+.badge.imp{background:#fff3e0;color:#b45309}
+.badge.global{background:#e8f5ee;color:var(--ok)}
+.badge.session{background:var(--accent-soft);color:var(--accent)}
+html[data-theme='dark'] .badge.imp{background:#3a2a10;color:#f5b95c}
+html[data-theme='dark'] .badge.global{background:#123325;color:#57d4a2}
+.search-box{display:flex;gap:10px}
+.search-box input{flex:1;padding:10px 12px;font-size:14px}
+.result-head{display:flex;gap:14px;color:var(--text-3);font-size:12px;margin-bottom:10px}
+.empty{text-align:center;color:var(--text-3);padding:48px 12px}
+.empty .big{font-size:40px;margin-bottom:8px}
+.spinner{width:22px;height:22px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.alert{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px}
+.alert.err{background:#fdecec;color:#c0392b}
+.alert.ok{background:#e8f5ee;color:#1e7b52}
+html[data-theme='dark'] .alert.err{background:#3a1c1c;color:#ff9a94}
+html[data-theme='dark'] .alert.ok{background:#123325;color:#57d4a2}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:10px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s;z-index:50}
+.toast.show{opacity:1}
+.switch{position:relative;width:38px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:var(--border);border-radius:999px;transition:background .2s;cursor:pointer}
+.switch .slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.switch input:checked+.slider{background:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(16px)}
+.dropzone{border:2px dashed var(--border);border-radius:var(--radius);padding:28px;text-align:center;color:var(--text-3);cursor:pointer;margin-bottom:12px}
+.dropzone:hover{border-color:var(--accent);color:var(--accent)}
+.import-log{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--panel-2);border-radius:8px;padding:10px;max-height:180px;overflow:auto;white-space:pre-wrap}
+.settings-group .group-title{font-weight:600;font-size:13px;color:var(--text-2);margin:14px 0 10px}
+.settings-group .row{display:flex;align-items:center;gap:12px;padding:8px 0}
+.settings-group .row .label{flex:1}
+.hint{color:var(--text-3);font-size:12px}
+.stat-strip{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.stat{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px}
+.stat .num{font-size:22px;font-weight:700}
+.stat .lbl{font-size:12px;color:var(--text-3)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="emoji">🧠</span>记忆管理</div>
+    <div class="nav active" data-panel="browser"><span class="icon">🕘</span>记忆浏览</div>
+    <div class="nav" data-panel="search"><span class="icon">🔍</span>语义搜索</div>
+    <div class="nav" data-panel="transfer"><span class="icon">⇅</span>导入导出</div>
+    <div class="nav" data-panel="settings"><span class="icon">⚙️</span>设置</div>
+    <div class="foot"><span id="status-dot" class="status-dot on"></span><span>预览模式（模拟数据）</span><br/><span class="hint">dsh-memory-manager v1.0.0</span></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <h1 id="page-title">记忆浏览</h1>
+      <div class="spacer"></div>
+      <button class="btn ghost sm" id="theme-btn">🌓 主题</button>
+    </header>
+
+    <div class="content">
+      <!-- 记忆浏览 -->
+      <section class="panel active" id="panel-browser">
+        <div class="stat-strip">
+          <div class="stat"><div class="num" id="st-total">14</div><div class="lbl">记忆总数</div></div>
+          <div class="stat"><div class="num" id="st-st">2,048 tokens</div><div class="lbl">短期 tokens</div></div>
+          <div class="stat"><div class="num" id="st-lt">12</div><div class="lbl">长期记忆</div></div>
+          <div class="stat"><div class="num" id="st-size">1.2 MB</div><div class="lbl">存储占用</div></div>
+          <div class="stat"><div class="num" id="st-emb">降级(哈希)</div><div class="lbl">嵌入模型</div></div>
+        </div>
+        <div class="toolbar">
+          <select id="f-session">
+            <option value="">全部会话</option>
+            <option value="会话 A · 数据分析">会话 A · 数据分析</option>
+            <option value="会话 B · 项目管理">会话 B · 项目管理</option>
+            <option value="会话 C · 日常生活">会话 C · 日常生活</option>
+          </select>
+          <label class="chip clickable active" data-global=""><input type="radio" name="fg" value="" checked style="display:none"/>全部</label>
+          <label class="chip clickable" data-global="1"><input type="radio" name="fg" value="1" style="display:none"/>🌍 全局</label>
+          <label class="chip clickable" data-global="0"><input type="radio" name="fg" value="0" style="display:none"/>🔒 本地</label>
+          <div class="grow"></div>
+          <button class="btn ghost sm" id="browse-refresh">刷新</button>
+        </div>
+        <div class="toolbar" id="f-tags"></div>
+        <div id="browser-list"></div>
+      </section>
+
+      <!-- 语义搜索 -->
+      <section class="panel" id="panel-search">
+        <div class="card">
+          <div class="search-box">
+            <input id="sq-input" type="text" placeholder="搜索记忆，例如：我喜欢用什么语言做数据分析？" />
+            <button class="btn" id="sq-btn">检索</button>
+          </div>
+          <div class="toolbar" style="margin:12px 0 0">
+            <label class="field"><span>Top-K</span><input id="sq-topk" type="number" min="1" max="20" value="5" style="width:80px"/></label>
+            <label class="field"><span>阈值</span><input id="sq-thr" type="number" min="0" max="1" step="0.05" value="0.4" style="width:80px"/></label>
+            <label class="field"><span>会话</span><input id="sq-session" type="text" placeholder="缺省=当前" style="width:160px"/></label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:16px"><span class="switch"><input id="sq-global" type="checkbox" checked/><span class="slider"></span></span>含全局记忆</label>
+          </div>
+        </div>
+        <div id="search-results"></div>
+      </section>
+
+      <!-- 导入导出 -->
+      <section class="panel" id="panel-transfer">
+        <div class="card">
+          <h3>⬇️ 导出备份</h3>
+          <div class="f-row">
+            <label class="field"><span>格式</span><select id="ex-format"><option value="json">JSON（含版本/统计头）</option><option value="jsonl">JSONL（每行一条）</option></select></label>
+            <div style="display:flex;align-items:flex-end"><button class="btn" id="ex-btn">导出并下载</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>⬆️ 导入备份</h3>
+          <div class="dropzone" id="dz">📂<br/>点击选择文件，或将 JSON / JSONL 备份拖放到此处</div>
+          <div class="f-row" style="align-items:flex-end">
+            <label class="field"><span>导入模式</span><select id="im-mode"><option value="merge">合并（跳过已存在）</option><option value="replace">替换（清空后导入）</option></select></label>
+          </div>
+          <pre class="import-log" id="import-log"></pre>
+        </div>
+        <div class="card">
+          <h3>🧹 存储清理</h3>
+          <p class="hint">手动触发 TTL 过期清理与存储超限（LRU + 低重要性优先）清理。</p>
+          <button class="btn ghost" id="st-cleanup">立即清理</button>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="panel" id="panel-settings">
+        <div class="card">
+          <div class="settings-group">
+            <div class="group-title">短期记忆（滑动窗口）</div>
+            <div class="row"><span class="label">窗口消息条数</span><input id="st-max-msgs" type="number" value="20" style="width:110px"/></div>
+            <div class="row"><span class="label">窗口 Token 上限</span><input id="st-max-tokens" type="number" value="4000" style="width:110px"/></div>
+          </div>
+          <div class="settings-group">
+            <div class="group-title">长期记忆与检索</div>
+            <div class="row"><span class="label">自动摘要阈值（轮次）</span><input id="st-auto-sum" type="number" value="10" style="width:110px"/></div>
+            <div class="row"><span class="label">检索 Top-K</span><input id="st-topk" type="number" value="5" style="width:110px"/></div>
+            <div class="row"><span class="label">相似度阈值</span><input id="st-thr" type="range" min="0" max="1" step="0.05" value="0.75" style="width:200px"/><span id="st-thr-val" class="hint" style="width:60px">0.75</span></div>
+            <div class="row"><span class="label">混合权重（向量占比）</span><input id="st-hybrid" type="range" min="0" max="1" step="0.05" value="0.7" style="width:200px"/><span id="st-hybrid-val" class="hint" style="width:60px">0.70</span></div>
+          </div>
+          <div class="settings-group">
+            <div class="group-title">嵌入模型</div>
+            <div class="row"><span class="label">模型类型</span><select id="st-emb" style="width:200px"><option value="local">本地模型（离线优先）</option><option value="openai">OpenAI API</option></select></div>
+            <div class="row"><span class="label">模型 ID（留空=哈希降级）</span><input id="st-emb-id" type="text" placeholder="如 Xenova/all-MiniLM-L6-v2" style="width:260px"/></div>
+            <div class="row"><span class="label">OpenAI API Key</span><input id="st-emb-key" type="password" placeholder="sk-…" style="width:260px"/></div>
+            <div class="hint">⚠️ 更换嵌入模型后，历史向量需重建索引。</div>
+          </div>
+          <div class="settings-group">
+            <div class="group-title">存储与安全</div>
+            <div class="row"><span class="label">存储上限（MB）</span><input id="st-max-mb" type="number" value="500" style="width:110px"/></div>
+            <div class="row"><span class="label">AES-256 加密存储</span><span class="switch"><input id="st-enc" type="checkbox" checked/><span class="slider"></span></span></div>
+            <div class="row"><span class="label">主密码（密钥派生）</span><input id="st-pass" type="password" placeholder="留空=自动生成随机密钥" style="width:260px"/></div>
+            <div class="row"><span class="label">API Token（可选鉴权）</span><input id="st-token" type="password" placeholder="Bearer token" style="width:260px"/></div>
+          </div>
+          <div class="settings-group">
+            <div class="group-title">全局记忆</div>
+            <div class="row"><span class="label">启用跨会话全局记忆</span><span class="switch"><input id="st-global" type="checkbox" checked/><span class="slider"></span></span></div>
+          </div>
+          <div style="margin-top:18px"><button class="btn" id="st-save">保存配置</button></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 模拟数据（≥12 条：3 会话 + 2 全局 + 3 标签，分数 0.96/0.78/0.55） ============ */
+const MOCK_MEMORIES = [
+  { id:'m01', content:'我喜欢用 Python 做数据分析，尤其擅长 pandas 和 Matplotlib 数据可视化。', tags:['偏好','数据分析'], importance:9, is_global:true,  session_id:'会话 A · 数据分析', created_at:'2026-08-20T10:12:00', source:'manual', tokens:32 },
+  { id:'m02', content:'项目 Alpha 的截止日期是下周五，需要提前完成数据清洗与建模。', tags:['工作','项目'], importance:8, is_global:false, session_id:'会话 B · 项目管理', created_at:'2026-08-21T09:30:00', source:'manual', tokens:28 },
+  { id:'m03', content:'我的宠物猫叫咪咪，是一只两岁的橘猫，喜欢晚上十点踩键盘。', tags:['生活'], importance:6, is_global:false, session_id:'会话 C · 日常生活', created_at:'2026-08-21T20:05:00', source:'manual', tokens:26 },
+  { id:'m04', content:'团队每周三上午十点开周会，需要准备上一周的数据看板。', tags:['工作','会议'], importance:7, is_global:false, session_id:'会话 B · 项目管理', created_at:'2026-08-22T08:45:00', source:'manual', tokens:25 },
+  { id:'m05', content:'我常用的 SQL 优化技巧：优先走索引、避免 SELECT *、使用 EXPLAIN 分析执行计划。', tags:['偏好','数据分析'], importance:7, is_global:true, session_id:'会话 A · 数据分析', created_at:'2026-08-22T14:20:00', source:'manual', tokens:38 },
+  { id:'m06', content:'上周末去了杭州西湖，推荐坐手摇船环湖，傍晚光线最适合拍照。', tags:['旅行','生活'], importance:5, is_global:false, session_id:'会话 C · 日常生活', created_at:'2026-08-23T11:00:00', source:'manual', tokens:30 },
+  { id:'m07', content:'预算 10 万以内买新能源车，关注续航、智驾和空间三个维度。', tags:['生活','理财'], importance:6, is_global:false, session_id:'会话 C · 日常生活', created_at:'2026-08-23T15:40:00', source:'manual', tokens:27 },
+  { id:'m08', content:'数据看板采用分层设计：概览指标页 + 明细下钻页 + 导出报表。', tags:['工作','数据分析'], importance:8, is_global:false, session_id:'会话 B · 项目管理', created_at:'2026-08-23T18:10:00', source:'manual', tokens:29 },
+  { id:'m09', content:'【对话摘要】讨论了新版 A/B 实验平台的指标体系与埋点方案。', tags:['摘要'], importance:6, is_global:false, session_id:'会话 B · 项目管理', created_at:'2026-08-24T09:00:00', source:'summary', tokens:24 },
+  { id:'m10', content:'客户反馈：新版首页加载速度偏慢，建议做首屏资源拆包优化。', tags:['工作','会议'], importance:8, is_global:false, session_id:'会话 B · 项目管理', created_at:'2026-08-24T10:22:00', source:'manual', tokens:30 },
+  { id:'m11', content:'推荐书单：数据分析类看《精益数据分析》，产品类看《启示录》。', tags:['偏好','学习'], importance:5, is_global:true, session_id:'会话 A · 数据分析', created_at:'2026-08-24T11:35:00', source:'manual', tokens:28 },
+  { id:'m12', content:'体检提示：今年要加强运动和早睡，血脂指标略高于参考值。', tags:['生活','健康'], importance:7, is_global:false, session_id:'会话 C · 日常生活', created_at:'2026-08-24T13:05:00', source:'manual', tokens:27 },
+  { id:'m13', content:'出差准备清单：身份证、充电器、降噪耳机、两套换洗衣物。', tags:['生活'], importance:4, is_global:false, session_id:'会话 C · 日常生活', created_at:'2026-08-24T16:48:00', source:'manual', tokens:24 },
+  { id:'m14', content:'【对话摘要】确认了数据仓库分层规范与命名约定，冻结 v1.0 交付范围。', tags:['摘要','工作'], importance:7, is_global:false, session_id:'会话 B · 项目管理', created_at:'2026-08-24T18:30:00', source:'summary', tokens:26 },
+];
+const SESSIONS = [...new Set(MOCK_MEMORIES.map(m=>m.session_id))];
+const TAGS = [...new Set(MOCK_MEMORIES.flatMap(m=>m.tags))];
+const $=(s,e=document)=>e.querySelector(s);
+const $$=(s,e=document)=>[...e.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTime=ts=>{const d=new Date(ts);const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
+function toast(m){const el=$('#toast');el.textContent=m;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2200)}
+const state={filters:{session:'',global:'',tag:''},config:null};
+const pageTitles={browser:'记忆浏览',search:'语义搜索',transfer:'导入导出',settings:'设置'};
+
+function memCard(m,score){
+  const tags=(m.tags||[]).map(t=>`<span class="chip">${esc(t)}</span>`).join(' ');
+  const pct=score!=null?Math.round(score*100):null;
+  return `<div class="mem" data-id="${esc(m.id)}">
+    <div class="mem-top"><div class="mem-content clamped">${esc(m.content)}</div></div>
+    <div class="mem-meta">
+      <span class="badge imp">重要度 ${m.importance}</span>
+      ${m.is_global?'<span class="badge global">全局</span>':`<span class="badge session">${esc(m.session_id)}</span>`}
+      <span>${fmtTime(m.created_at)}</span><span class="spacer" style="flex:1"></span>
+      ${pct!=null?`<span class="score-track"><span class="score-fill" style="width:${pct}%"></span></span><span>${(score*100).toFixed(1)}%</span>`:''}
+    </div>
+    <div class="mem-detail">
+      <div class="d-row"><span>ID</span><code>${esc(m.id)}</code></div>
+      <div class="d-row"><span>标签</span>${tags||'<span class="hint">无</span>'}</div>
+      <div class="d-row"><span>会话</span><span>${esc(m.session_id)}</span><span>来源</span><span>${esc(m.source||'-')}</span><span>Tokens</span><span>${m.tokens??'-'}</span></div>
+      <div class="d-row" style="margin-top:6px">
+        <button class="btn ghost sm act-imp" data-id="${esc(m.id)}" data-d="1">重要性+1</button>
+        <button class="btn ghost sm act-imp" data-id="${esc(m.id)}" data-d="-1">重要性-1</button>
+        <button class="btn danger sm act-del" data-id="${esc(m.id)}">删除</button>
+      </div>
+    </div></div>`;
+}
+
+/* ---- 记忆浏览 ---- */
+function renderBrowser(){
+  const f=state.filters;
+  let list=MOCK_MEMORIES.filter(m=>(!f.session||m.session_id===f.session)&&(!f.global||String(m.is_global)===f.global)&&(!f.tag||(m.tags||[]).includes(f.tag)));
+  const box=$('#browser-list');
+  $('#st-total').textContent=list.length;
+  if(!list.length){box.innerHTML='<div class="empty"><div class="big">🧠</div><div style="font-weight:600">暂无记忆</div><div class="hint">调整筛选条件，或添加记忆</div></div>';return}
+  box.innerHTML='<div class="mem-list">'+list.map(m=>memCard(m)).join('')+'</div>';
+  $$('#browser-list .mem').forEach(el=>el.addEventListener('click',ev=>{if(ev.target.closest('button'))return;el.classList.toggle('open');el.querySelector('.mem-content').classList.toggle('clamped')}));
+}
+function renderTags(){
+  $('#f-tags').innerHTML='<span class="chip gray clickable active" data-tag="">全部</span>'+TAGS.map(t=>`<span class="chip clickable" data-tag="${esc(t)}">${esc(t)}</span>`).join('');
+  $$('#f-tags .chip').forEach(c=>c.addEventListener('click',()=>{$$('#f-tags .chip').forEach(x=>x.classList.remove('active'));c.classList.add('active');state.filters.tag=c.dataset.tag;renderBrowser()}));
+}
+
+/* ---- 语义搜索（对模拟数据做朴素打分：字符 + 二元组重叠，与真实混合检索一致） ---- */
+function scoreQuery(m, query) {
+  const q = String(query || '').replace(/\s+/g, '');
+  const c = m.content;
+  if (c.includes(q)) return 0.98;
+  const qchars = [...q], cchars = [...c];
+  const qset = new Set(qchars), cset = new Set(cchars);
+  let common = 0; for (const ch of qset) if (cset.has(ch)) common++;
+  const qbig = new Set(); for (let i = 0; i < qchars.length - 1; i++) qbig.add(qchars[i] + qchars[i + 1]);
+  const cbig = new Set(); for (let i = 0; i < cchars.length - 1; i++) cbig.add(cchars[i] + cchars[i + 1]);
+  let commonBig = 0; for (const b of qbig) if (cbig.has(b)) commonBig++;
+  const chars = common / Math.max(1, qset.size);
+  const big = commonBig / Math.max(1, qbig.size);
+  return Math.min(0.97, 0.55 * chars + 0.45 * big);
+}
+function doSearch(){
+  const query=$('#sq-input').value.trim();const box=$('#search-results');
+  if(!query){box.innerHTML='<div class="empty"><div class="big">🔍</div><div style="font-weight:600">输入检索内容</div><div class="hint">例如：我喜欢用什么语言做数据分析</div></div>';return}
+  box.innerHTML='<div class="empty"><div class="spinner"></div><div>正在检索…</div></div>';
+  const t0=performance.now();
+  const delay=window.__NO_DELAY__?0:180;
+  setTimeout(()=>{
+    const topK=Number($('#sq-topk').value)||5;
+    const thr=Number($('#sq-thr').value)||0.4;
+    const sess=$('#sq-session').value.trim();
+    const includeG=$('#sq-global').checked;
+    let cand=MOCK_MEMORIES.filter(m=>(includeG||!m.is_global)&&(!sess||m.session_id===sess)).map(m=>({m,s:scoreQuery(m,query)}));
+    cand.sort((a,b)=>b.s-a.s);
+    const passed=cand.filter(x=>x.s>=thr).slice(0,topK);
+    const ms=Math.round(performance.now()-t0);
+    if(!passed.length){box.innerHTML=`<div class="empty"><div class="big">🔍</div><div style="font-weight:600">未找到相关记忆</div><div class="hint">试试降低相似度阈值或换一种问法</div></div>`;return}
+    box.innerHTML=`<div class="result-head"><span>共 ${cand.filter(x=>x.s>=thr).length} 条</span><span>耗时 ${ms}ms</span></div><div class="mem-list">${passed.map(x=>memCard(x.m,x.s)).join('')}</div>`;
+    $$('#search-results .mem').forEach(el=>el.addEventListener('click',ev=>{if(ev.target.closest('button'))return;el.classList.toggle('open');el.querySelector('.mem-content').classList.toggle('clamped')}));
+  },180);
+}
+
+/* ---- 导入导出 ---- */
+function doExport(){
+  const fmt=$('#ex-format').value;
+  const payload={version:1,exported_at:new Date().toISOString(),counts:MOCK_MEMORIES.length,memories:MOCK_MEMORIES};
+  const text=fmt==='jsonl'?MOCK_MEMORIES.map(m=>JSON.stringify(m)).join('\n'):JSON.stringify(payload,null,2);
+  const blob=new Blob([text],{type:'application/octet-stream'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`memory-backup-${Date.now()}.${fmt}`;a.click();URL.revokeObjectURL(a.href);
+  toast('备份已导出');$('#import-log').textContent=`已导出 ${MOCK_MEMORIES.length} 条（${fmt.toUpperCase()}，${text.length} 字符）`;
+}
+
+/* ---- 事件 ---- */
+function initNav(){
+  $$('.sidebar .nav').forEach(nav=>nav.addEventListener('click',()=>{
+    $$('.sidebar .nav').forEach(n=>n.classList.remove('active'));nav.classList.add('active');
+    const t=nav.dataset.panel;$$('.panel').forEach(p=>p.classList.remove('active'));$('#panel-'+t).classList.add('active');
+    $('#page-title').textContent=pageTitles[t];
+  }));
+}
+function init(){
+  const saved=localStorage.getItem('dsh_mem_theme')||'light';
+  document.documentElement.setAttribute('data-theme',saved);
+  initNav();renderTags();renderBrowser();
+  // 支持 URL hash 直达面板：#browser / #search / #transfer / #settings
+  const want=location.hash.replace('#','');
+  if(['browser','search','transfer','settings'].includes(want)){
+    const nav=document.querySelector(`.sidebar .nav[data-panel="${want}"]`);
+    if(nav) nav.click();
+  }
+  $('#f-session').addEventListener('change',e=>{state.filters.session=e.target.value;renderBrowser()});
+  $$('#f-tags .chip')[0]&&null;
+  $$('input[name="fg"]').forEach(r=>r.addEventListener('change',e=>{state.filters.global=e.target.value;$$('label[data-global]').forEach(l=>l.classList.toggle('active',l.dataset.global===e.target.value));renderBrowser()}));
+  $$('label[data-global]').forEach(l=>l.addEventListener('click',()=>{const r=l.querySelector('input');r.checked=true;r.dispatchEvent(new Event('change'))}));
+  $('#browse-refresh').addEventListener('click',()=>{renderBrowser();toast('已刷新')});
+  $('#sq-btn').addEventListener('click',doSearch);
+  $('#sq-input').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
+  $('#st-thr').addEventListener('input',e=>$('#st-thr-val').textContent=Number(e.target.value).toFixed(2));
+  $('#st-hybrid').addEventListener('input',e=>$('#st-hybrid-val').textContent=Number(e.target.value).toFixed(2));
+  $('#st-save').addEventListener('click',()=>{toast('配置已保存（预览模式）')});
+  $('#st-cleanup').addEventListener('click',()=>{toast('已清理：过期 0，超限清理 0')});
+  $('#ex-btn').addEventListener('click',doExport);
+  $('#theme-btn').addEventListener('click',()=>{const cur=document.documentElement.getAttribute('data-theme');const next=cur==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',next);localStorage.setItem('dsh_mem_theme',next)});
+  $('#dz').addEventListener('click',()=>{$('#import-log').textContent='预览模式：选择文件后将模拟导入（真实版本会调用 /api/memory/import）';toast('预览模式不支持真实导入')});
+  $('#st-cleanup');
+  document.addEventListener('click',async e=>{
+    const del=e.target.closest('.act-del');
+    if(del){e.stopPropagation();const id=del.dataset.id;if(!confirm('确定删除这条记忆？'))return;const i=MOCK_MEMORIES.findIndex(x=>x.id===id);if(i>=0)MOCK_MEMORIES.splice(i,1);renderBrowser();renderTags();toast('已删除');return}
+    const imp=e.target.closest('.act-imp');
+    if(imp){e.stopPropagation();const id=imp.dataset.id;const m=MOCK_MEMORIES.find(x=>x.id===id);if(!m)return;m.importance=Math.max(1,Math.min(10,m.importance+Number(imp.dataset.d)));renderBrowser();toast(`重要度 ${m.importance}`)}
+  });
+}
+init();
+</script>
+</body>
+</html>

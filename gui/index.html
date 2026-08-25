@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧠 记忆管理 · dsh-memory-manager</title>
+  <link rel="stylesheet" href="./css/main.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="brand"><span class="emoji">🧠</span>记忆管理</div>
+      <div class="nav active" data-panel="browser"><span class="icon">🕘</span>记忆浏览</div>
+      <div class="nav" data-panel="search"><span class="icon">🔍</span>语义搜索</div>
+      <div class="nav" data-panel="transfer"><span class="icon">⇅</span>导入导出</div>
+      <div class="nav" data-panel="settings"><span class="icon">⚙️</span>设置</div>
+      <div class="foot">
+        <span id="status-dot" class="status-dot off"></span><span id="status-label">连接中…</span><br/>
+        <span class="hint">dsh-memory-manager v1.0.0</span>
+      </div>
+    </aside>
+
+    <!-- 主区 -->
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title">记忆浏览</h1>
+        <div class="spacer"></div>
+        <button class="btn ghost sm" id="theme-btn">🌓 主题</button>
+      </header>
+
+      <div class="content">
+        <!-- 记忆浏览 -->
+        <section class="panel active" id="panel-browser">
+          <div class="stat-strip">
+            <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
+            <div class="stat"><div class="num" id="st-st">-</div><div class="lbl">短期 tokens</div></div>
+            <div class="stat"><div class="num" id="st-lt">-</div><div class="lbl">长期记忆</div></div>
+            <div class="stat"><div class="num" id="st-size">-</div><div class="lbl">存储占用</div></div>
+            <div class="stat"><div class="num" id="st-emb">-</div><div class="lbl">嵌入模型</div></div>
+          </div>
+          <div class="toolbar">
+            <select id="f-session" style="min-width:150px"><option value="">全部会话</option></select>
+            <label class="chip clickable"><input type="radio" name="f-global" value="" checked style="display:none"/>全部</label>
+            <label class="chip clickable"><input type="radio" name="f-global" value="1" style="display:none"/>🌍 全局</label>
+            <label class="chip clickable"><input type="radio" name="f-global" value="0" style="display:none"/>🔒 本地</label>
+            <div class="grow"></div>
+            <button class="btn ghost sm" id="browse-refresh">刷新</button>
+          </div>
+          <div class="toolbar" id="f-tags"></div>
+          <div id="browser-list"></div>
+        </section>
+
+        <!-- 语义搜索 -->
+        <section class="panel" id="panel-search">
+          <div class="card">
+            <div class="search-box">
+              <input id="sq-input" type="text" placeholder="搜索记忆，例如：我喜欢用什么语言做数据分析？" />
+              <button class="btn" id="sq-btn">检索</button>
+            </div>
+            <div class="toolbar" style="margin:12px 0 0">
+              <label class="field"><span>Top-K</span>
+                <input id="sq-topk" type="number" min="1" max="20" value="5" style="width:80px" />
+              </label>
+              <label class="field"><span>阈值</span>
+                <input id="sq-thr" type="number" min="0" max="1" step="0.05" value="0.4" style="width:80px" />
+              </label>
+              <label class="field"><span>会话</span>
+                <input id="sq-session" type="text" placeholder="缺省=当前" style="width:160px" />
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;margin-top:16px">
+                <span class="switch"><input type="checkbox" id="sq-global" checked/><span class="slider"></span></span>含全局记忆
+              </label>
+            </div>
+          </div>
+          <div id="search-results"></div>
+        </section>
+
+        <!-- 导入导出 -->
+        <section class="panel" id="panel-transfer">
+          <div class="card">
+            <h3>⬇️ 导出备份</h3>
+            <div class="f-row">
+              <label class="field"><span>格式</span>
+                <select id="ex-format"><option value="json">JSON（含版本/统计头）</option><option value="jsonl">JSONL（每行一条）</option></select>
+              </label>
+              <div style="display:flex;align-items:flex-end"><button class="btn" id="ex-btn">导出并下载</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>⬆️ 导入备份</h3>
+            <div class="dropzone" id="dz">
+              <div style="font-size:26px">📂</div>
+              点击选择文件，或将 JSON / JSONL 备份拖放到此处
+              <input type="file" id="dz-file" accept=".json,.jsonl,application/json" style="display:none" />
+            </div>
+            <div class="f-row" style="align-items:flex-end">
+              <label class="field"><span>导入模式</span>
+                <select id="im-mode"><option value="merge">合并（跳过已存在）</option><option value="replace">替换（清空后导入）</option></select>
+              </label>
+            </div>
+            <pre class="import-log" id="import-log"></pre>
+          </div>
+          <div class="card">
+            <h3>🧹 存储清理</h3>
+            <p class="hint">手动触发 TTL 过期清理与存储超限（LRU + 低重要性优先）清理。</p>
+            <button class="btn ghost" id="st-cleanup">立即清理</button>
+          </div>
+        </section>
+
+        <!-- 设置 -->
+        <section class="panel" id="panel-settings">
+          <div id="settings-msg"></div>
+          <div class="card">
+            <div class="settings-group">
+              <div class="group-title">短期记忆（滑动窗口）</div>
+              <div class="row"><span class="label">窗口消息条数</span><input id="st-max-msgs" type="number" min="1" style="width:110px" /></div>
+              <div class="row"><span class="label">窗口 Token 上限</span><input id="st-max-tokens" type="number" min="100" style="width:110px" /></div>
+            </div>
+            <div class="settings-group">
+              <div class="group-title">长期记忆与检索</div>
+              <div class="row"><span class="label">自动摘要阈值（消息条数，0=关闭）</span><input id="st-auto-sum" type="number" min="0" style="width:110px" /></div>
+              <div class="row"><span class="label">检索 Top-K</span><input id="st-topk" type="number" min="1" style="width:110px" /></div>
+              <div class="row"><span class="label">相似度阈值</span><input id="st-thr" type="range" min="0" max="1" step="0.05" style="width:200px" /><span id="st-thr-val" class="hint" style="width:60px"></span></div>
+              <div class="row"><span class="label">混合权重（向量占比）</span><input id="st-hybrid" type="range" min="0" max="1" step="0.05" style="width:200px" /><span id="st-hybrid-val" class="hint" style="width:60px"></span></div>
+            </div>
+            <div class="settings-group">
+              <div class="group-title">嵌入模型</div>
+              <div class="row">
+                <span class="label">模型类型</span>
+                <select id="st-emb" style="width:200px">
+                  <option value="local">本地模型（离线优先）</option>
+                  <option value="openai">OpenAI API</option>
+                </select>
+              </div>
+              <div class="row"><span class="label">模型 ID（本地留空=哈希降级）</span><input id="st-emb-id" type="text" placeholder="如 Xenova/all-MiniLM-L6-v2" style="width:260px" /></div>
+              <div class="row"><span class="label">OpenAI API Key</span><input id="st-emb-key" type="password" placeholder="sk-…" style="width:260px" /></div>
+              <div class="hint">⚠️ 更换嵌入模型后，历史向量需重建索引（GUI 检索会自动按新模型向量计算）。</div>
+            </div>
+            <div class="settings-group">
+              <div class="group-title">存储与安全</div>
+              <div class="row"><span class="label">存储上限（MB）</span><input id="st-max-mb" type="number" min="1" style="width:110px" /></div>
+              <div class="row"><span class="label">AES-256 加密存储</span><span class="switch"><input id="st-enc" type="checkbox"/><span class="slider"></span></span></div>
+              <div class="row"><span class="label">主密码（加密密钥派生）</span><input id="st-pass" type="password" placeholder="留空=自动生成随机密钥" style="width:260px" /></div>
+              <div class="row"><span class="label">API Token（可选鉴权）</span><input id="st-token" type="password" placeholder="Bearer token" style="width:260px" /></div>
+            </div>
+            <div class="settings-group">
+              <div class="group-title">全局记忆</div>
+              <div class="row"><span class="label">启用跨会话全局记忆</span><span class="switch"><input id="st-global" type="checkbox"/><span class="slider"></span></span></div>
+            </div>
+            <div style="margin-top:18px"><button class="btn" id="st-save">保存配置</button></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

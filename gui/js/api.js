@@ -1,0 +1,88 @@
+/**
+ * Web GUI API 客户端：封装 /api/memory 端点。
+ * 供 gui/index.html（真实模式）使用；preview.html 使用同款方法签名 + 模拟数据。
+ * @module gui/js/api
+ */
+
+export class MemoryApi {
+  constructor(base = '') {
+    this.base = base.replace(/\/+$/, '')
+    this.token = localStorage.getItem('dsh_mem_token') || ''
+  }
+
+  setToken(t) {
+    this.token = t
+    localStorage.setItem('dsh_mem_token', t)
+  }
+
+  headers(json = false) {
+    const h = {}
+    if (this.token) h.Authorization = `Bearer ${this.token}`
+    if (json) h['Content-Type'] = 'application/json'
+    return h
+  }
+
+  async _fetch(path, opts = {}) {
+    const resp = await fetch(this.base + path, opts)
+    let data = null
+    try { data = await resp.json() } catch { /* 非 JSON 响应 */ }
+    if (!resp.ok) {
+      const msg = data?.error?.message || `HTTP ${resp.status}`
+      throw new Error(msg)
+    }
+    return data
+  }
+
+  get(path) {
+    return this._fetch(path, { headers: this.headers() })
+  }
+
+  post(path, body) {
+    return this._fetch(path, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify(body ?? {}),
+    })
+  }
+
+  patch(path, body) {
+    return this._fetch(path, {
+      method: 'PATCH',
+      headers: this.headers(true),
+      body: JSON.stringify(body ?? {}),
+    })
+  }
+
+  del(path) {
+    return this._fetch(path, { method: 'DELETE', headers: this.headers() })
+  }
+
+  // ---- 业务方法 ----
+  healthz() { return this.get('/api/memory/healthz') }
+  stats() { return this.get('/api/memory/stats') }
+  memories(params = {}) {
+    const q = new URLSearchParams()
+    for (const k of Object.keys(params)) if (params[k] !== undefined && params[k] !== '') q.set(k, params[k])
+    const s = q.toString()
+    return this.get(`/api/memory/memories${s ? `?${s}` : ''}`)
+  }
+  memory(id) { return this.get(`/api/memory/memories/${id}`) }
+  deleteMemory(id) { return this.del(`/api/memory/memories/${id}`) }
+  deleteBatch(body) { return this.post('/api/memory/memories/delete', body) }
+  search(query, opts = {}) {
+    return this.post('/api/memory/search', { query, top_k: opts.top_k, threshold: opts.threshold, session_id: opts.session_id, include_global: opts.include_global })
+  }
+  recent(session, n) { return this.get(`/api/memory/recent?session=${encodeURIComponent(session || 'default')}${n ? `&n=${n}` : ''}`) }
+  summarize(body) { return this.post('/api/memory/summarize', body) }
+  importance(id, score) { return this.patch(`/api/memory/memories/${id}/importance`, { score }) }
+  getConfig() { return this.get('/api/memory/config') }
+  saveConfig(body) { return this.post('/api/memory/config', body) }
+  exportBackup(format = 'json') {
+    const q = format === 'jsonl' ? '?format=jsonl' : ''
+    return fetch(this.base + `/api/memory/export${q}`, { headers: this.headers() })
+  }
+  importBackup(text, mode = 'merge') { return this.post('/api/memory/import', { text, mode }) }
+  cleanup() { return this.post('/api/memory/cleanup', {}) }
+}
+
+export const api = new MemoryApi()
