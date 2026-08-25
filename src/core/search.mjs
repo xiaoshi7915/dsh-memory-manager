@@ -106,6 +106,9 @@ export async function search(engine, query, opts = {}) {
       session_id: rec.session_id,
       timestamp: new Date(rec.created_at).toISOString(),
       is_global: rec.is_global,
+      // P4 可观测：Agent 跨源融合时能分辨来源与层级（本库 / 摘要）
+      source: 'memory-manager',
+      layer: rec.source === 'summary' || rec.summary_of ? 'summary' : 'long_term',
     })
   }
 

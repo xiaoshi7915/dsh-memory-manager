@@ -45,5 +45,6 @@ export async function stats(engine) {
     embedding_status: engine.embedding.status().kind === 'hash' ? 'degraded' : 'completed',
     needs_reindex: engine.needsReindex(),
     decrypt_failed: engine._decryptFailed?.size ?? 0,
+    layered_present: engine.layered_present === true,
   }
 }

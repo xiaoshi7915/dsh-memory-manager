@@ -74,6 +74,8 @@ const TOOL_DEFS = [
           session_id: str('所属会话'),
           timestamp: str('创建时间 ISO'),
           is_global: bool('是否全局记忆'),
+          source: str('来源（memory-manager 本库）'),
+          layer: str('层级（long_term 长期 / summary 摘要）'),
         }),
       },
       total: int('命中条数'),
@@ -193,9 +195,10 @@ const TOOL_DEFS = [
       embedding_status: str('completed 或 degraded'),
       needs_reindex: bool('是否需要重建索引'),
       decrypt_failed: int('解密失败条数（密钥可能已变更，历史记忆不可读）'),
+      layered_present: bool('dsh-layered-memory 是否在场（在场时 Agent 分层记忆应调 layered 工具）'),
     }),
     render(_args, v) {
-      return text(`记忆库统计：总数 ${v.total_memories}（长期 ${v.long_term_count} / 短期 ${v.short_term_tokens} tokens），占用 ${v.storage_size_mb}MB，嵌入 ${v.embedding_status}${v.needs_reindex ? '（需重建索引）' : ''}`)
+      return text(`记忆库统计：总数 ${v.total_memories}（长期 ${v.long_term_count} / 短期 ${v.short_term_tokens} tokens），占用 ${v.storage_size_mb}MB，嵌入 ${v.embedding_status}${v.needs_reindex ? '（需重建索引）' : ''}${v.layered_present ? '；dsh-layered-memory 在场（分层记忆请调其 memory_search/memory_read_scene）' : ''}`)
     },
   },
 ]
@@ -308,23 +311,12 @@ async function generateSummarize(ctx, text) {
   return out || null
 }
 
-/** 构建该会话的注入上下文（隐式记忆注入用）。 */
-export function buildInjection(engine, sessionId, userInput) {
-  return {
-    async inject() {
-      const recent = await engine.getRecent(sessionId)
-      const searchRes = await engine.search(userInput || '', { sessionId, topK: 3, threshold: 0.4 })
-      const parts = []
-      if (recent.messages.length > 0) {
-        parts.push(`【最近对话】\n${recent.messages.map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`).join('\n')}`)
-      }
-      if (searchRes.results.length > 0) {
-        parts.push(`【相关记忆】\n${searchRes.results.map((r) => `- ${r.content}（相关度 ${r.score.toFixed(2)}）`).join('\n')}`)
-      }
-      return { text: parts.join('\n\n'), token_cost: countTokens(parts.join('\n')) }
-    },
-  }
-}
+// 记忆注入决策（P4，多智能体架构师合议）：
+// DSH 无 ctx.injection 服务；真实注入面是 agent.inject(UserMessage) 与 agent/pre-step 监听，
+// 且 dsh-layered-memory 已占有 recall 注入（双通道）。本插件「记忆仅显式工具召回」——
+// Agent 通过 mm_* 显式调用，不做隐式注入（避免双份上下文 + token 浪费 + 相关度噪音）。
+// 原 buildInjection 死代码（曾返回 {text, token_cost}，与任何注入面都不匹配）已移除。
+// 若将来需要接线，走 agent/pre-step 且仅在 layered 缺席时。
 
 /**
  * P2：探测 dsh-layered-memory 是否已在本进程注册（事件协调用）。
@@ -391,6 +383,8 @@ export function apply(ctx, config = {}) {
   if (eventMode.layered) {
     console.warn(`[dsh-memory-manager] 检测到 dsh-layered-memory 在场，事件协调=${eventMode.mode}（${eventMode.reason}）：${eventMode.captureEnabled ? '短期捕获开' : '短期捕获让位'} / ${eventMode.summarizeEnabled ? '自动摘要开' : '自动摘要让位'}`)
   }
+  // P4 可观测：把 layered 在场标志挂到引擎，stats（工具/REST）上报 layered_present
+  enginePromise.then((e) => { e.layered_present = eventMode.layered })
 
   // 1) 通过真实 defineTool + ctx.tools.register 注册 7 个工具（mm_* 前缀，P1 共存）
   for (const spec of TOOL_DEFS) {

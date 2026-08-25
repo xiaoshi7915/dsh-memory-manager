@@ -33,6 +33,7 @@
     "hardening": "node scripts/hardening-encryption-test.mjs",
     "layered": "node scripts/layered-endpoints-test.mjs",
     "gui:layered": "node scripts/gui-layered-logic-test.mjs",
+    "observability": "node scripts/agent-observability-test.mjs",
     "serve": "node src/server/index.mjs",
     "preview": "node src/server/index.mjs"
   },

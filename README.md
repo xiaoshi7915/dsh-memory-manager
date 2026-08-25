@@ -18,7 +18,7 @@
 | 🔒 会话隔离 | 默认仅本会话可见；`is_global` 记忆跨会话共享，可整体开关 |
 | 🔐 安全 | 默认 AES-256-GCM 加密存储（主密码 scrypt 派生密钥） |
 | ⇅ 导入导出 | JSON / JSONL 备份，合并 / 替换两种恢复模式 |
-| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置 四面板，深浅双主题；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI） |
+| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置，深浅双主题；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI）；记忆浏览内嵌**层级 Tab**（概览/L1 原子记忆/L2 场景/L3 画像/L0 对话，只读浏览 dsh-layered-memory 真实分层数据） |
 
 ---
 
@@ -186,4 +186,6 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 - **倒排索引**：内存 `term → {id, freq}` 增量索引（启动构建一次，增删/导入实时维护；与存储失步时自愈重建），关键词检索从全表扫描降到命中集——2000 条下检索平均 ~104ms、峰值 <170ms。
 - **重建索引**：更换嵌入模型后点「重建索引」按新模型对全库重嵌入并覆写向量索引；重建完成前检索自动降级为关键词匹配（不报错、不返回旧模型乱序结果）。
 - **明文缓存**：搜索高频解密场景以 `id → 明文` 内存缓存加速。
-- **加密存储**：默认加密；`master_password` 提供则 scrypt 派生，否则自动生成随机密钥（`.key`，0600）。
+- **加密存储**：默认加密；`master_password` 提供则 scrypt 派生，否则自动生成随机密钥（`.key`，0600）。**加密守卫**：库里有记录时禁止修改主密码/加密开关（避免密钥变更静默损坏存量），解密失败显式标记并计入 `stats.decrypt_failed`；`config.json` 原子写 + 0600。
+- **分层只读浏览**（与 dsh-layered-memory 共存）：Web GUI 的「记忆浏览」内嵌层级 Tab（概览/L1 原子记忆/L2 场景/L3 画像/L0 对话），**只读直连** layered 的真实数据（`~/.dsh/memory`：readOnly SQLite + JSONL/MD 解析），数据不可用时 fail-closed（503，GUI 显不可用，绝不返回猜测数据）；唯一写点是记忆模式 `mode` PUT（原子写 + mtime 并发守卫，实验性）。分层浏览不做导入/清理/重建索引（数据由 layered 独占写）。
+- **记忆仅显式工具召回**：DSH 无 `ctx.injection`；真实注入面（`agent.inject`/`agent/pre-step`）归 dsh-layered-memory 的 recall 注入所有。本插件不做隐式注入（避免双份上下文 + token 浪费），Agent 通过 `mm_*` 显式调用；`mm_search` 结果带 `source: 'memory-manager'` 与 `layer`（long_term/summary），`mm_stats` 带 `layered_present`（在场时分层记忆请调 layered 的 `memory_search`/`memory_read_scene`）。
