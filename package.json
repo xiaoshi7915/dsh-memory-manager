@@ -1,0 +1,61 @@
+{
+  "name": "dsh-memory-manager",
+  "version": "1.0.0",
+  "description": "为 AI Agent 提供短期记忆缓存、长期知识沉淀、语义检索与持久化存储的统一记忆管理层",
+  "type": "module",
+  "main": "./src/dsh/plugin.mjs",
+  "exports": {
+    ".": "./src/dsh/plugin.mjs",
+    "./engine": "./src/core/index.mjs",
+    "./handlers": "./src/tools/handlers.mjs",
+    "./config": "./src/config.mjs"
+  },
+  "files": [
+    "src",
+    "gui",
+    "contracts",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "seed": "node scripts/seed-2000.mjs",
+    "verify": "node scripts/verify.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "integration": "node scripts/dsh-integration.mjs",
+    "serve": "node src/server/index.mjs",
+    "preview": "node src/server/index.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "plugin",
+    "memory",
+    "agent",
+    "rag",
+    "embeddings",
+    "sqlite",
+    "semantic-search"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaoshi7915/dsh-memory-manager.git"
+  },
+  "homepage": "https://github.com/xiaoshi7915/dsh-memory-manager",
+  "bugs": {
+    "url": "https://github.com/xiaoshi7915/dsh-memory-manager/issues"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.1 <0.2.0-0 || >=0.1.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.1 <0.2.0-0 || >=0.1.1-rc.1 <0.2.0-0"
+  }
+}

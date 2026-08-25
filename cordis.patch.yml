@@ -1,0 +1,5 @@
+# dsh-memory-manager 安装补丁（dsh plugin add 消费）
+# name 指向包 main（导出 apply 的 DSH 插件适配层），经 profile node_modules 按包名解析。
+- insert:
+    - id: dsh-memory-manager
+      name: dsh-memory-manager

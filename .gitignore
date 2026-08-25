@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+# 本地记忆数据（测试生成）
+.tmp-memory/
+test-data/
