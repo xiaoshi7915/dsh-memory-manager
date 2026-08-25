@@ -7,6 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createLayeredReader } from '../core/layered.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const GUI_ROOT = path.resolve(__dirname, '..', '..', 'gui')
@@ -111,7 +112,13 @@ export function attachRoutes(getEngine) {
       await handle(req, res, getEngine)
     } catch (e) {
       const code = e?.code ?? 'INTERNAL'
-      sendError(res, code, e?.message || '内部错误', code === 'VALIDATION_ERROR' ? 400 : (code === 'NOT_FOUND' ? 404 : 500))
+      const status = code === 'VALIDATION_ERROR' ? 400
+        : code === 'NOT_FOUND' ? 404
+        : code === 'UNAUTHORIZED' ? 401
+        : code === 'LAYERED_UNAVAILABLE' ? 503
+        : code === 'CONCURRENT_WRITE' ? 409
+        : 500
+      sendError(res, code, e?.message || '内部错误', status)
     }
   }
 }
@@ -152,6 +159,76 @@ async function handle(req, res, getEngine) {
   if (method === 'GET' && rel === 'stats') {
     sendJson(res, 200, await engine.stats())
     return
+  }
+  // ---- layered 分层记忆（只读直连 dsh-layered-memory 真实数据；P2） ----
+  // 每次请求新建读取器：readOnly 打开很廉价，且避免跨请求持有句柄与 layered 并发读长事务。
+  if (rel.startsWith('layered')) {
+    const lr = createLayeredReader()
+    try {
+      const lrel = rel.replace(/^layered\/?/, '')
+      const sp = url.searchParams
+      // 统计
+      if (method === 'GET' && lrel === 'stats') {
+        sendJson(res, 200, await lr.stats())
+        return
+      }
+      // L1 原子记忆
+      if (method === 'GET' && lrel === 'l1') {
+        sendJson(res, 200, lr.l1({
+          type: sp.get('type') || undefined,
+          family: sp.get('family') || undefined,
+          scene: sp.get('scene') || undefined,
+          offset: Number(sp.get('offset')) || 0,
+          limit: Number(sp.get('limit')) || 20,
+        }))
+        return
+      }
+      // L2 场景列表
+      if (method === 'GET' && lrel === 'scenes') {
+        sendJson(res, 200, lr.scenes({ family: sp.get('family') || undefined }))
+        return
+      }
+      // L2 单个场景内容
+      const sceneMatch = lrel.match(/^scenes\/([^/]+)\/([^/]+)$/)
+      if (method === 'GET' && sceneMatch) {
+        sendJson(res, 200, lr.scene({ family: sceneMatch[1], name: sceneMatch[2] }))
+        return
+      }
+      // L3 画像
+      if (method === 'GET' && lrel === 'persona') {
+        sendJson(res, 200, lr.persona({ family: sp.get('family') || 'chat' }))
+        return
+      }
+      // L0 原始对话
+      if (method === 'GET' && lrel === 'l0') {
+        sendJson(res, 200, lr.l0({
+          session: sp.get('session') || undefined,
+          offset: Number(sp.get('offset')) || 0,
+          limit: Number(sp.get('limit')) || 20,
+        }))
+        return
+      }
+      // 会话维度
+      if (method === 'GET' && lrel === 'sessions') {
+        sendJson(res, 200, lr.sessions())
+        return
+      }
+      // 记忆模式（GET 只读 / PUT 写穿，唯一写点，实验性）
+      if (method === 'GET' && lrel === 'mode') {
+        sendJson(res, 200, lr.mode({ session: sp.get('session') || undefined }))
+        return
+      }
+      if (method === 'PUT' && lrel === 'mode') {
+        const body = await readJsonBody(req)
+        sendJson(res, 200, await lr.modeSet({ session: body.session, mode: body.mode }))
+        return
+      }
+      // 未知 layered 子路径
+      sendError(res, 'NOT_FOUND', 'Not found', 404)
+      return
+    } finally {
+      lr.close()
+    }
   }
   // 记忆列表（时间线，P3：SQL 级 LIMIT/OFFSET 真分页）
   if (method === 'GET' && rel === 'memories') {
