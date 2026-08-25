@@ -6,7 +6,7 @@
 
 ## 1. 设计目标
 
-- **统一入口**：在 DSH Web 侧边栏提供「🧠 记忆管理」入口（`ctx.slots.inject('sidebar.settings', ...)`），与 Agent 的工具调用（`memory_add` / `memory_search` 等）共用同一记忆库。
+- **统一入口**：在 DSH Web 侧边栏提供「🧠 记忆管理」入口（`ctx.slots.inject('sidebar.settings', ...)`），与 Agent 的工具调用（`mm_add` / `mm_search` 等）共用同一记忆库。
 - **可读性优先**：记忆是时间线 + 评分，重点呈现「内容 / 重要度 / 会话 / 时间 / 相关度」五个维度，避免信息过载。
 - **桌面优先**：16:9 以上的工作台布局；窄屏降级为滚动。
 - **深浅双主题**：`data-theme` 切换，所有颜色走 CSS 变量，保证无障碍对比度。

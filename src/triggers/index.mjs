@@ -6,15 +6,15 @@
 
 /** 正则规则表：每条含匹配正则、目标工具、参数提取。 */
 const RULES = [
-  // 1. 记住 → memory_add
+  // 1. 记住 → mm_add
   {
-    tool: 'memory_add',
+    tool: 'mm_add',
     test: /(?:帮我|请|麻烦)?(记住|记一下|记下来|记得)(?:[:：\s,，。]*)(.+)/,
     extract: (m) => ({ content: m[2].trim() }),
   },
-  // 5. 删除/忘掉/清空 → memory_delete（放在检索前，避免"关于"被检索规则抢占）
+  // 5. 删除/忘掉/清空 → mm_delete（放在检索前，避免"关于"被检索规则抢占）
   {
-    tool: 'memory_delete',
+    tool: 'mm_delete',
     test: /删除关于|删除.+的记忆|忘掉|忘记|清空记忆|删掉/,
     extract: (_m, text) => {
       let target = null
@@ -28,15 +28,15 @@ const RULES = [
       return { conditions: { tag: target } }
     },
   },
-  // 2. 之前说过 / 你还记得吗 → memory_search
+  // 2. 之前说过 / 你还记得吗 → mm_search
   {
-    tool: 'memory_search',
+    tool: 'mm_search',
     test: /(?:我之前说过|我以前提过|关于|你还记得吗|你还记得|记得吗)(?:[:：\s,，。]*)(.*)/,
     extract: (m) => ({ query: m[1].trim() || '' }),
   },
-  // 3. 总结 / 存起来 → memory_summarize
+  // 3. 总结 / 存起来 → mm_summarize
   {
-    tool: 'memory_summarize',
+    tool: 'mm_summarize',
     test: /(?:总结一下|总结|把刚才的内容存起来|把对话存起来|做个总结)(.*)/,
     extract: () => ({}),
   },
@@ -46,9 +46,9 @@ const RULES = [
     test: /(?:查看我的记忆|打开记忆管理|打开记忆面板|记忆面板|查看记忆)/,
     extract: () => ({}),
   },
-  // 6. 这次对话上下文 / 聊到哪 → memory_get_recent
+  // 6. 这次对话上下文 / 聊到哪 → mm_get_recent
   {
-    tool: 'memory_get_recent',
+    tool: 'mm_get_recent',
     test: /(?:这次对话的上下文|我们刚才聊到哪|刚才聊到|上下文是什么)/,
     extract: () => ({}),
   },

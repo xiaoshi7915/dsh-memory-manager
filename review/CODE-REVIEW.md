@@ -108,3 +108,12 @@
 | ✅ 原子写 | 见上表 persistVectors 行 |
 | ✅ 验证 | `scripts/p0-test.mjs` 30/30（纯临时目录，含 layered 文件不可碰断言 C4、坏库 fail-closed C9、双实例 LOCKED D3） |
 | 📄 设计存档 | `docs/coexistence-design.md`（**不提交 git**，供 P1 工具改名 mm_* / P2 事件协调 / P3 GUI 分页对照） |
+
+### 第五轮：共存 P1 工具改名 mm_*（2026-08-25，接共存方案 ①）
+| 项 | 落地 |
+|---|---|
+| ✅ 单一常量源 | `src/tools/names.mjs`：MM_NAMES / LEGACY_NAMES / LEGACY_TO_MM / ALL_MM / ALL_LEGACY |
+| ✅ 改名 | `TOOL_DEFS` 7 个工具 `memory_*`→`mm_*`（加 key）；`HANDLERS` 双键（mm_* + memory_*）指向同一实现；`triggers` 触发词改 `mm_*`；REST/GUI 不变（HTTP 路径与工具面解耦） |
+| ✅ bareSearch 别名 | `config.compat.bareSearch=true` 时 best-effort 注册旧名 memory_*（被 layered 占用即 try/catch 跳过，绝不致命）；`DEFAULT_CONFIG` 增加 `compat` 段 |
+| ✅ 验证 | 集成 **34/34**（原 26 + 7 别名注册 + 1 别名执行，真实 Cordis 装载）；smoke 26/26 · P0 30/30 · verify 7/7 |
+| 📝 文档 | contracts/tools.md、TASK-spec/senior、ARCHITECTURE、gui/DESIGN、dsh-research 同步 mm_* |

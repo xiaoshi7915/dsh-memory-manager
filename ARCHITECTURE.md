@@ -132,8 +132,8 @@
 5. **导入导出**：export 序列化全量 → import 校验/去重/逐条入库。
 
 ## 6. 会话隔离模型
-- 检索默认只命中 `session_id === 当前会话` 或 `is_global=1`（且 `global_memory.enabled`）。is_global 仅 `memory_add` 显式传 `is_global:true` 才置位。
-- `memory_delete` 无 sessionId 上下文时只允许删本会话记忆；带全局权限时才可删全局。
+- 检索默认只命中 `session_id === 当前会话` 或 `is_global=1`（且 `global_memory.enabled`）。is_global 仅 `mm_add` 显式传 `is_global:true` 才置位。
+- `mm_delete` 无 sessionId 上下文时只允许删本会话记忆；带全局权限时才可删全局。
 
 ## 7. 错误处理约定
 - 工具返回统一 `{error: {code, message}}`（code 见 contracts/tools.md 错误码表）。内部抛 `MemoryError{code,message}`，由 handlers 层捕获映射。

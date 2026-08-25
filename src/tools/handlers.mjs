@@ -2,11 +2,13 @@
  * 7 个 Agent 工具的处理函数（纯逻辑，与 DSH/HTTP 解耦）。
  * 每个 handler 签名：(args, ctx) => Promise<result>，ctx = { engine, sessionId }。
  * 返回结构与 contracts/tools.md 完全一致；错误抛 MemoryError（含 code）。
+ * 对外名（mm_*）与旧名（memory_*）统一经 names.mjs 映射；HANDLERS 两种键都挂同一实现。
  * @module src/tools/handlers
  */
 
 import { MemoryError, assertString, assertNumber, assertBoolean, assertTags, newId, nowMs } from '../core/types.mjs'
 import { countTokens } from '../core/tokenizer.mjs'
+import { MM_NAMES, LEGACY_NAMES } from './names.mjs'
 
 function wrap(fn) {
   return async (args, ctx) => {
@@ -95,13 +97,21 @@ export const memory_update_importance = wrap(async (args, ctx) => {
 /** memory_stats：整体统计。 */
 export const memory_stats = wrap(async (args, ctx) => ctx.engine.stats())
 
-/** 全部 handler 的注册表。 */
-export const HANDLERS = {
-  memory_add,
-  memory_search,
-  memory_get_recent,
-  memory_summarize,
-  memory_delete,
-  memory_update_importance,
-  memory_stats,
+/** 全部 handler 的注册表（mm_* 与 memory_* 双键，指向同一实现）。 */
+const IMPL = {
+  add: memory_add,
+  search: memory_search,
+  get_recent: memory_get_recent,
+  summarize: memory_summarize,
+  delete: memory_delete,
+  update_importance: memory_update_importance,
+  stats: memory_stats,
 }
+
+export const HANDLERS = {}
+for (const key of Object.keys(IMPL)) {
+  HANDLERS[MM_NAMES[key]] = IMPL[key]
+  HANDLERS[LEGACY_NAMES[key]] = IMPL[key]
+}
+/** 逻辑键 → handler（供按 key 取用）。 */
+export const HANDLERS_BY_KEY = IMPL

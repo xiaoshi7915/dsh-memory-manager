@@ -10,6 +10,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { MemoryEngine } from '../core/index.mjs'
 import { HANDLERS } from '../tools/handlers.mjs'
+import { MM_NAMES, LEGACY_NAMES } from '../tools/names.mjs'
 import { countTokens } from '../core/tokenizer.mjs'
 import { attachRoutes, serveGuiHandler } from '../server/routes.mjs'
 
@@ -27,10 +28,12 @@ const nullable = (schema) => ({ oneOf: [schema, { type: 'null' }] })
 /** 渲染文本块。 */
 const text = (s) => [{ type: 'text', text: s }]
 
-/** 7 个工具定义（parameters + output.schema + output.render，与 contracts/tools.md 一致）。 */
+/** 7 个工具定义（parameters + output.schema + output.render，与 contracts/tools.md 一致）。
+ * 对外名统一 mm_*（P1 与 dsh-layered-memory 共存）；key 供 bareSearch 旧名别名映射。 */
 const TOOL_DEFS = [
   {
-    name: 'memory_add',
+    key: 'add',
+    name: MM_NAMES.add,
     description: '向长期记忆库添加一条结构化记忆（内容 + 可选标签 + 重要性 1-10 + 可选 is_global）。用户说"帮我记住…/记住这个…/记一下…"时调用。',
     parameters: {
       content: { type: 'string', required: true, description: '记忆内容' },
@@ -50,7 +53,8 @@ const TOOL_DEFS = [
     },
   },
   {
-    name: 'memory_search',
+    key: 'search',
+    name: MM_NAMES.search,
     description: '基于查询文本检索最相关的 K 条记忆（语义相似度，含关键词+向量混合）。用户说"我之前说过…/关于…你还记得吗"时调用。',
     parameters: {
       query: { type: 'string', required: true, description: '检索查询文本' },
@@ -82,7 +86,8 @@ const TOOL_DEFS = [
     },
   },
   {
-    name: 'memory_get_recent',
+    key: 'get_recent',
+    name: MM_NAMES.get_recent,
     description: '获取当前会话最近 N 轮的短期记忆上下文（滑动窗口）。用户问"这次对话的上下文/我们刚才聊到哪了"时调用。',
     parameters: {
       n: int('最近消息条数，默认按配置'),
@@ -103,7 +108,8 @@ const TOOL_DEFS = [
     },
   },
   {
-    name: 'memory_summarize',
+    key: 'summarize',
+    name: MM_NAMES.summarize,
     description: '对指定对话区间生成摘要并存储为长期记忆，压缩上下文窗口。用户说"总结一下我们的对话"时调用。',
     parameters: {
       session_id: str('会话 ID，缺省为当前会话'),
@@ -122,7 +128,8 @@ const TOOL_DEFS = [
     },
   },
   {
-    name: 'memory_delete',
+    key: 'delete',
+    name: MM_NAMES.delete,
     description: '按 ID 删除单条记忆，或按条件（会话/标签/全局/时间/重要性）批量删除。用户说"删除关于…的记忆/忘掉…/清空记忆"时调用。',
     parameters: {
       ids: { type: 'array', items: { type: 'string' }, description: '要删除的记忆 ID 列表' },
@@ -149,7 +156,8 @@ const TOOL_DEFS = [
     },
   },
   {
-    name: 'memory_update_importance',
+    key: 'update_importance',
+    name: MM_NAMES.update_importance,
     description: '修改指定记忆的重要性评分（1-10）。',
     parameters: {
       memory_id: { type: 'string', required: true, description: '记忆 ID' },
@@ -165,7 +173,8 @@ const TOOL_DEFS = [
     },
   },
   {
-    name: 'memory_stats',
+    key: 'stats',
+    name: MM_NAMES.stats,
     description: '获取当前记忆库的整体统计信息（数量、存储、嵌入状态等）。',
     parameters: {},
     output: obj({
@@ -319,7 +328,7 @@ export function apply(ctx, config = {}) {
   // LLM 摘要护栏读取运行中引擎的配置（llm_guardrails），引擎就绪前用缺省值
   const llmSummarize = makeLlmSummarize(ctx, () => engineHolder.engine?.config ?? null)
 
-  // 1) 通过真实 defineTool + ctx.tools.register 注册 7 个工具
+  // 1) 通过真实 defineTool + ctx.tools.register 注册 7 个工具（mm_* 前缀，P1 共存）
   for (const spec of TOOL_DEFS) {
     ctx.tools.register(defineTool({
       name: spec.name,
@@ -335,6 +344,30 @@ export function apply(ctx, config = {}) {
         return HANDLERS[spec.name](args ?? {}, { engine, sessionId, llmSummarize, signal: exec?.signal })
       },
     }))
+  }
+
+  // 1b) 旧名 memory_* 别名（compat.bareSearch=true 时 best-effort）：
+  // 与 dsh-layered-memory 共存场景下旧名可能已被其占用 → 注册抛错即跳过，绝不致命。
+  if (config?.compat?.bareSearch === true) {
+    for (const spec of TOOL_DEFS) {
+      const legacy = LEGACY_NAMES[spec.key]
+      try {
+        ctx.tools.register(defineTool({
+          name: legacy,
+          description: spec.description,
+          parameters: spec.parameters,
+          output: { schema: spec.output, render: spec.render },
+          async execute(args, exec) {
+            const engine = engineHolder.engine ?? (await enginePromise)
+            const sessionId = exec?.agent?.session?.id || config.default_session_id || 'default'
+            return HANDLERS[legacy](args ?? {}, { engine, sessionId, llmSummarize, signal: exec?.signal })
+          },
+        }))
+      } catch (e) {
+        // 名字已被占用（如 layered 的 memory_search）→ 静默跳过别名，工具面仍以 mm_* 为准
+        console.warn(`[dsh-memory-manager] bare 别名 ${legacy} 注册失败（可能已被其他插件占用），跳过: ${e?.message ?? e}`)
+      }
+    }
   }
 
   // 2) Web 路由：把 contracts/web-api.md 的 REST 端点挂到 /api/memory

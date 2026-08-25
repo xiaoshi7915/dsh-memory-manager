@@ -30,7 +30,7 @@
 ## 6. 插件可调用的 LLM API（供摘要）
 - 有。注入 `llm` 能力（`inject: ['llm']`），使用 `@deepseek-ai/dsh-llm` 的类型与组装工具（`createUserMessage`、`BlockAssembler`、`GenerateOptions`、`Message`）。
 - 参考实现 `packages/session/session-title-llm/src/index.ts`：`inject = ['sessionTitle','llm','sessions']`，发起一次辅助请求，记录 `session/title-llm-request` 事件；可指定 `provider/model` 或用当前主请求路由。
-- 结论：memory_summarize 的**生成式摘要**可走 `ctx.llm`；离线环境用本地抽取式摘要兜底。作为"可选增强"实现，默认抽取式（零依赖、离线可用）。
+- 结论：mm_summarize 的**生成式摘要**可走 `ctx.llm`；离线环境用本地抽取式摘要兜底。作为"可选增强"实现，默认抽取式（零依赖、离线可用）。
 
 ## 7. "Agent 生成回复前"的钩子
 - 会话事件流提供 `turn/start`（每轮开始，即回复生成前）、`user/message`（用户消息落库）、`assistant/message`、`turn/end`。事件类型见 `packages/core/session/src/known-event-types.ts:64-66` 与 `types.ts:243-264`。

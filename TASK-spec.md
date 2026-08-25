@@ -21,16 +21,18 @@
 6. **多会话隔离与共享**：默认会话间记忆隔离；支持将特定记忆标记为"全局记忆"（is_global），供所有会话检索。
 7. **记忆导入导出**：支持将记忆库备份为 JSON/JSONL，或从备份文件恢复，便于迁移与审计。
 
-## 3. Agent 工具（7 个，须向 Agent 暴露）
+## 3. Agent 工具（7 个，须向 Agent 暴露；P1 起对外名统一 `mm_*` 前缀）
 | 工具名 | 功能 | 期望返回 |
 |---|---|---|
-| memory_add | 向长期记忆库添加一条结构化记忆（内容 + 可选标签 + 重要性 1-10 + 可选 is_global） | `{"success": true, "memory_id": "uuid", "embedding_status": "completed", "token_cost": 12}` |
-| memory_search | 基于查询文本检索最相关的 K 条记忆 | `{"results": [{"id": "uuid", "content": "...", "score": 0.92, "session_id": "...", "timestamp": "...", "is_global": false}], "total": 5, "latency_ms": 45}` |
-| memory_get_recent | 获取当前会话最近 N 轮的短期记忆上下文 | `{"messages": [{"role": "user", "content": "..."}], "token_count": 2048, "window_size": 10, "truncated": false}` |
-| memory_summarize | 对指定对话区间生成摘要并存储为长期记忆 | `{"summary": "用户偏好使用Python进行数据分析...", "memory_id": "uuid", "compressed_from": 24, "saved_tokens": 1800}` |
-| memory_delete | 按 ID 删除单条记忆，或按条件批量删除 | `{"deleted_count": 3, "affected_sessions": ["sess_1"], "freed_tokens": 450}` |
-| memory_update_importance | 修改指定记忆的重要性评分（1-10） | `{"memory_id": "uuid", "old_score": 5, "new_score": 9}` |
-| memory_stats | 获取当前记忆库的整体统计信息 | `{"total_memories": 150, "short_term_tokens": 2048, "long_term_count": 142, "storage_size_mb": 12.5, "last_compacted": "..."}` |
+| mm_add | 向长期记忆库添加一条结构化记忆（内容 + 可选标签 + 重要性 1-10 + 可选 is_global） | `{"success": true, "memory_id": "uuid", "embedding_status": "completed", "token_cost": 12}` |
+| mm_search | 基于查询文本检索最相关的 K 条记忆 | `{"results": [{"id": "uuid", "content": "...", "score": 0.92, "session_id": "...", "timestamp": "...", "is_global": false}], "total": 5, "latency_ms": 45}` |
+| mm_get_recent | 获取当前会话最近 N 轮的短期记忆上下文 | `{"messages": [{"role": "user", "content": "..."}], "token_count": 2048, "window_size": 10, "truncated": false}` |
+| mm_summarize | 对指定对话区间生成摘要并存储为长期记忆 | `{"summary": "用户偏好使用Python进行数据分析...", "memory_id": "uuid", "compressed_from": 24, "saved_tokens": 1800}` |
+| mm_delete | 按 ID 删除单条记忆，或按条件批量删除 | `{"deleted_count": 3, "affected_sessions": ["sess_1"], "freed_tokens": 450}` |
+| mm_update_importance | 修改指定记忆的重要性评分（1-10） | `{"memory_id": "uuid", "old_score": 5, "new_score": 9}` |
+| mm_stats | 获取当前记忆库的整体统计信息 | `{"total_memories": 150, "short_term_tokens": 2048, "long_term_count": 142, "storage_size_mb": 12.5, "last_compacted": "..."}` |
+
+> P1 共存：旧名 `memory_*` 仅在 `compat.bareSearch=true` 时 best-effort 注册为别名（默认关闭，被 layered 占用则跳过）。
 
 ## 4. Web 界面（GUI 侧边栏）
 - **侧边栏入口**：图标 "🧠"，标题"记忆管理"。
@@ -40,7 +42,7 @@
 - **导入导出工具**：上传 JSON/JSONL 恢复记忆；下载当前记忆库备份。
 
 ## 5. 数据与配置
-数据存储位置：默认 `~/.dsh/memory/` 目录：
+数据存储位置：默认 `~/.dsh/memory-manager/` 目录（P0 起专属目录；旧 `~/.dsh/memory` 首启自动迁移）：
 - `short_term/{session_id}.jsonl` — 各会话的近期对话（按行存储）
 - `long_term/memories.db` — SQLite 数据库存储记忆元数据
 - `long_term/vector.index` — 本地向量索引（FAISS 或 HNSW）
@@ -59,13 +61,13 @@
 ## 6. 触发场景
 | 用户话语 | 触发动作 |
 |---|---|
-| "帮我记住..." / "记住这个..." / "记一下..." | 调用 memory_add |
-| "我之前说过..." / "关于...你还记得吗" / "我以前提过" | 调用 memory_search |
-| "总结一下我们的对话" / "把刚才的内容存起来" | 调用 memory_summarize |
+| "帮我记住..." / "记住这个..." / "记一下..." | 调用 mm_add |
+| "我之前说过..." / "关于...你还记得吗" / "我以前提过" | 调用 mm_search |
+| "总结一下我们的对话" / "把刚才的内容存起来" | 调用 mm_summarize |
 | "查看我的记忆" / "打开记忆管理" / "记忆面板" | 打开 Web 界面侧边栏 |
-| "删除关于...的记忆" / "忘掉..." / "清空记忆" | 调用 memory_delete |
-| "这次对话的上下文" / "我们刚才聊到哪了" | 调用 memory_get_recent |
-| 隐式触发：每次 Agent 生成回复前 | 自动调用 memory_get_recent + memory_search 注入相关记忆 |
+| "删除关于...的记忆" / "忘掉..." / "清空记忆" | 调用 mm_delete |
+| "这次对话的上下文" / "我们刚才聊到哪了" | 调用 mm_get_recent |
+| 隐式触发：每次 Agent 生成回复前 | 自动调用 mm_get_recent + mm_search 注入相关记忆 |
 
 ## 7. 权限与限制
 - **仅本机使用**：所有记忆数据默认存储在本地磁盘，不上传任何云端服务。

@@ -64,6 +64,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   global_memory: {
     enabled: true,
   },
+  // 与 dsh-layered-memory 共存选项（P1 起；bareSearch 实际生效值读插件配置 cordis config.compat.bareSearch）
+  compat: {
+    bareSearch: false, // true=额外 best-effort 注册旧名 memory_* 别名（被他人占用则跳过）
+  },
 })
 
 /** SQLite memories 建表语句。 */
