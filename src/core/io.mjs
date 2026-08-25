@@ -48,7 +48,8 @@ export async function importBackup(engine, text, { mode = 'merge' } = {}) {
     const all = engine.store.list().map((r) => r.id)
     if (all.length > 0) {
       engine.store.deleteByIds(all)
-      for (const id of all) engine.vector.remove(id)
+      engine.vector.clear()
+      engine.inverted.clear()
     }
   }
 

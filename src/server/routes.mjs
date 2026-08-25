@@ -266,6 +266,11 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, await engine.runLifecycle())
     return
   }
+  // 重建向量索引（更换嵌入模型后调用；期间检索自动降级关键词）
+  if (method === 'POST' && rel === 'reindex') {
+    sendJson(res, 200, await engine.reindex())
+    return
+  }
 
   sendError(res, 'NOT_FOUND', 'Not found', 404)
 }

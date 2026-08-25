@@ -74,3 +74,28 @@
 | P2 | triggers 死代码未接线；_plainCache 无上限；prepared statement 未复用 | 接线或删除；LRU 上限；open() 预编译 |
 
 > 说明：本轮视觉工具预算耗尽，UI 设计师/UX 走查为**源码级评审**（未看图），对比度为 WCAG 公式估算。
+
+---
+
+## 第三轮：功能补全（2026-08-24，接第二轮待办）
+围绕用户点名的三项补齐，回归全绿：集成 26/26 · smoke 26/26（+3 新覆盖）· verify 7/7。
+
+### 本轮完成
+| 项 | 内容 |
+|---|---|
+| 🔴 P0 真 reindex | `engine.reindex()` 按当前提供者对全库重嵌入并覆写向量索引；saveConfig 对嵌入冷键（model/id/api_key）**运行时重建提供者**；`needs_reindex` 期间检索**自动降级关键词**（不报错、不返回旧模型乱序）；`POST /api/memory/reindex` 端点 + GUI「重建索引」按钮 + 状态提示（✓已同步 / ⚠️需重建） |
+| 🟡 P1 倒排索引 | 新增 `src/core/inverted.mjs`（`Map<term, Map<id,freq>>` + docTerms 回撤）；启动构建一次、addMemory/删除/TTL/超限/导入实时维护；**失步自愈**（`docCount()!==store.count()` 时就地重建，覆盖旁路直插/恢复场景）；关键词检索从全表扫描 O(N) 降到命中集 |
+| 🟡 P2 GUI 视觉整改 | 按 UI 设计师清单：主题默认**跟随系统/宿主**（prefers-color-scheme + 监听变化，显式切换才记忆）；danger 对比度 WCAG AA（浅色 #c62828/白字 5.94:1，深色浅红底+深字 7:1 级）；`:focus-visible` 高对比焦点环（含表单控件）；loading/禁用态（`busy()` 助手 + 清理/导出/检索防重入）；**内联确认**替代原生 confirm（删除两步确认 3.5s、替换导入内联确认条）；导航键盘可达（role=button + Enter/Space）；离线状态点改红；`prefers-reduced-motion` 尊重 |
+
+### 新增回归覆盖（已固化进 smoke）
+- 倒排-删除后关键词不再命中、倒排-索引与存储一致
+- REST reindex（processed / needs_reindex=false / latency_ms）
+
+### 仍待办
+| 优先级 | 问题 | 方向 |
+|---|---|---|
+| P1 | persistVectors 全量 JSON 覆写 + 并发写可覆盖（O(N²) 悬崖） | 串行队列+原子写( tmp+rename )，或向量并入 SQLite BLOB 同事务 |
+| P1 | 插件与 `npm run serve` 独立服务器共用数据目录双写 | 目录文件锁 .lock 拒绝双写；README 声明 |
+| P1 | GUI 记忆列表无分页（固定 limit 200，老记忆不可达）；会话下拉仅前 500 条 | offset 翻页 + distinct 会话接口 |
+| P1 | 隐式注入（turn/start 注入 buildInjection）未接线 | 确认 DSH 注入接口后实现，或降级验收承诺 |
+| P2 | triggers 死代码未接线；_plainCache 无上限；prepared statement 未复用 | 接线或删除；LRU 上限；open() 预编译 |

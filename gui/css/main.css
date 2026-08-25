@@ -10,7 +10,8 @@
   --accent: #4f6ef7;
   --accent-2: #6a85ff;
   --accent-soft: #eef1ff;
-  --danger: #e5484d;
+  --danger: #c62828; /* 白字对比 5.94:1（WCAG AA 通过） */
+  --danger-ink: #fff;
   --ok: #2f9e6e;
   --warn: #d97706;
   --shadow: 0 1px 3px rgba(28, 35, 51, .06), 0 6px 20px rgba(28, 35, 51, .05);
@@ -28,10 +29,23 @@ html[data-theme='dark'] {
   --accent: #6a85ff;
   --accent-2: #8aa0ff;
   --accent-soft: #20294a;
+  --danger: #ff8a90; /* 深色：浅红底 + 深红字（对比 7:1 级） */
+  --danger-ink: #581a1d;
   --shadow: 0 1px 3px rgba(0, 0, 0, .35), 0 6px 20px rgba(0, 0, 0, .3);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* 键盘可达性：:focus-visible 高对比焦点环（鼠标点击不显示，键盘导航必现） */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* 无障碍：尊重系统减弱动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -71,7 +85,7 @@ a { color: var(--accent); text-decoration: none; }
 .sidebar .foot { margin-top: auto; padding: 10px 12px; color: var(--text-3); font-size: 12px; }
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 .status-dot.on { background: var(--ok); }
-.status-dot.off { background: var(--warn); }
+.status-dot.off { background: var(--danger); }
 
 /* 主区 */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -104,6 +118,10 @@ input[type='text'], input[type='number'], input[type='password'], select, textar
   padding: 8px 10px; font-size: 13px; font-family: inherit; outline: none;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 input[type='range'] { accent-color: var(--accent); }
 label.field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-2); }
 label.field input, label.field select { font-size: 13px; color: var(--text); }
@@ -118,10 +136,19 @@ label.field input, label.field select { font-size: 13px; color: var(--text); }
 }
 .btn:hover { background: var(--accent-2); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.loading { opacity: .6; cursor: progress; }
 .btn.ghost { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
 .btn.ghost:hover { background: var(--panel-2); color: var(--text); }
-.btn.danger { background: var(--danger); }
+.btn.danger { background: var(--danger); color: var(--danger-ink); }
+html[data-theme='light'] .btn.danger { color: #fff; }
+.btn.danger:hover { filter: brightness(1.06); }
 .btn.sm { padding: 5px 10px; font-size: 12px; }
+/* 内联确认态（删除/替换确认） */
+.btn.confirming { animation: pulse-danger 1.1s ease-in-out infinite; }
+@keyframes pulse-danger {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, .45); }
+  50% { box-shadow: 0 0 0 5px rgba(198, 40, 40, 0); }
+}
 
 /* 标签 */
 .chip {
@@ -208,6 +235,15 @@ html[data-theme='dark'] .alert.ok { background: #123325; color: #57d4a2; }
 }
 .dropzone:hover { border-color: var(--accent); color: var(--accent); }
 .import-log { font-family: var(--mono); font-size: 12px; color: var(--text-2); background: var(--panel-2); border-radius: 8px; padding: 10px; max-height: 180px; overflow: auto; white-space: pre-wrap; }
+/* 内联确认条 */
+.inline-confirm {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border);
+  border-left: 3px solid var(--danger); border-radius: 8px;
+  background: var(--panel-2); font-size: 13px;
+}
+.inline-confirm .ic-msg { color: var(--text); }
+.inline-confirm .ic-actions { display: inline-flex; gap: 6px; margin-left: auto; }
 
 /* 设置分组 */
 .settings-group { margin-bottom: 8px; }

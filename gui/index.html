@@ -11,10 +11,10 @@
     <!-- 侧边栏 -->
     <aside class="sidebar">
       <div class="brand"><span class="emoji">🧠</span>记忆管理</div>
-      <div class="nav active" data-panel="browser"><span class="icon">🕘</span>记忆浏览</div>
-      <div class="nav" data-panel="search"><span class="icon">🔍</span>语义搜索</div>
-      <div class="nav" data-panel="transfer"><span class="icon">⇅</span>导入导出</div>
-      <div class="nav" data-panel="settings"><span class="icon">⚙️</span>设置</div>
+      <div class="nav active" data-panel="browser" role="button" tabindex="0" aria-label="记忆浏览"><span class="icon">🕘</span>记忆浏览</div>
+      <div class="nav" data-panel="search" role="button" tabindex="0" aria-label="语义搜索"><span class="icon">🔍</span>语义搜索</div>
+      <div class="nav" data-panel="transfer" role="button" tabindex="0" aria-label="导入导出"><span class="icon">⇅</span>导入导出</div>
+      <div class="nav" data-panel="settings" role="button" tabindex="0" aria-label="设置"><span class="icon">⚙️</span>设置</div>
       <div class="foot">
         <span id="status-dot" class="status-dot off"></span><span id="status-label">连接中…</span><br/>
         <span class="hint">dsh-memory-manager v1.0.0</span>
@@ -66,7 +66,7 @@
                 <input id="sq-thr" type="number" min="0" max="1" step="0.05" value="0.4" style="width:80px" />
               </label>
               <label class="field"><span>会话</span>
-                <input id="sq-session" type="text" placeholder="缺省=当前" style="width:160px" />
+                <input id="sq-session" type="text" placeholder="留空 = 全部会话" style="width:160px" />
               </label>
               <label style="display:flex;align-items:center;gap:6px;margin-top:16px">
                 <span class="switch"><input type="checkbox" id="sq-global" checked/><span class="slider"></span></span>含全局记忆
@@ -135,7 +135,11 @@
               </div>
               <div class="row"><span class="label">模型 ID（本地留空=哈希降级）</span><input id="st-emb-id" type="text" placeholder="如 Xenova/all-MiniLM-L6-v2" style="width:260px" /></div>
               <div class="row"><span class="label">OpenAI API Key</span><input id="st-emb-key" type="password" placeholder="sk-…" style="width:260px" /></div>
-              <div class="hint">⚠️ 更换嵌入模型后，历史向量需重建索引（GUI 检索会自动按新模型向量计算）。</div>
+              <div class="row">
+                <span class="label">向量索引 <span class="hint" id="st-reindex-note"></span></span>
+                <button class="btn sm" id="st-reindex-btn" type="button">重建索引</button>
+              </div>
+              <div class="hint">更换嵌入模型并保存后，需点「重建索引」让历史记忆按新模型重新嵌入；重建完成前检索自动降级为关键词匹配。</div>
             </div>
             <div class="settings-group">
               <div class="group-title">存储与安全</div>

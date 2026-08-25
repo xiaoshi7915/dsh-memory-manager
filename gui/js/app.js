@@ -31,6 +31,30 @@ function setStatus(on, label) {
   $('#status-label').textContent = label
 }
 
+/** 按钮忙碌/禁用态（异步操作期间防重复点击）。 */
+function busy(btn, on) {
+  if (!btn) return
+  btn.disabled = on
+  btn.classList.toggle('loading', on)
+}
+
+/** 内联确认：在容器里渲染 确认/取消 按钮，返回 Promise<boolean>（替代原生 confirm，统一视觉与可访问性）。 */
+function inlineConfirm(container, message, { danger = true } = {}) {
+  return new Promise((resolve) => {
+    const wrap = document.createElement('div')
+    wrap.className = 'inline-confirm'
+    wrap.innerHTML = `<span class="ic-msg">${esc(message)}</span>
+      <span class="ic-actions">
+        <button class="btn ${danger ? 'danger' : ''} sm ic-yes">确认</button>
+        <button class="btn ghost sm ic-no">取消</button>
+      </span>`
+    wrap.querySelector('.ic-yes').onclick = () => { wrap.remove(); resolve(true) }
+    wrap.querySelector('.ic-no').onclick = () => { wrap.remove(); resolve(false) }
+    container.appendChild(wrap)
+    wrap.querySelector('.ic-no').focus()
+  })
+}
+
 function spinner(html) {
   return `<div class="empty"><div class="spinner"></div><div>${html}</div></div>`
 }
@@ -83,6 +107,7 @@ async function loadStats() {
     $('#st-lt').textContent = s.long_term_count
     $('#st-size').textContent = fmtBytes(s.storage_size_mb)
     $('#st-emb').textContent = s.embedding_status === 'degraded' ? '降级(哈希)' : s.embedding_model
+    $('#st-reindex-note').textContent = s.needs_reindex ? '⚠️ 需重建（模型已变更）' : (s.long_term_count > 0 ? '✓ 已同步' : '')
   } catch { /* 忽略 */ }
 }
 
@@ -139,6 +164,8 @@ async function doSearch() {
   const box = $('#search-results')
   if (!query) { box.innerHTML = emptyBox('输入检索内容', '例如：我喜欢用什么语言做数据分析'); return }
   box.innerHTML = spinner('正在检索…')
+  const btn = $('#sq-btn')
+  busy(btn, true)
   const t0 = performance.now()
   try {
     // Number.isFinite 保留合法 0（阈值 0 = 接受全部结果），避免被 `|| 默认` 吞掉
@@ -165,11 +192,15 @@ async function doSearch() {
     })
   } catch (e) {
     box.innerHTML = `<div class="alert err">检索失败：${esc(e.message)}</div>`
+  } finally {
+    busy(btn, false)
   }
 }
 
 /* ---------------- 导入导出面板 ---------------- */
 async function doExport() {
+  const btn = $('#ex-btn')
+  busy(btn, true)
   try {
     const fmt = $('#ex-format').value
     const resp = await api.exportBackup(fmt)
@@ -182,6 +213,8 @@ async function doExport() {
     toast('备份已导出')
   } catch (e) {
     toast('导出失败：' + e.message)
+  } finally {
+    busy(btn, false)
   }
 }
 
@@ -205,9 +238,11 @@ async function importFile(file) {
   try {
     const text = await file.text()
     const mode = $('#im-mode').value
-    if (mode === 'replace' && !confirm(`导入模式为「替换」：将清空现有 ${state.memories.length || '全部'} 条记忆后写入。确定继续？`)) {
-      log.textContent = '已取消导入（替换模式需确认）'
-      return
+    if (mode === 'replace') {
+      // 内联确认替代原生 confirm（统一视觉/可访问性）
+      const ok = await inlineConfirm(log, `导入模式「替换」将清空现有 ${state.memories.length || '全部'} 条记忆后写入。确定继续？`)
+      if (!ok) { log.textContent = '已取消导入（替换模式需确认）'; return }
+      log.textContent += '已确认替换，继续…\n'
     }
     const res = await api.importBackup(text, mode)
     log.textContent = `读取完成：${file.name}（${text.length} 字符）\n导入 ${res.imported} 条，跳过 ${res.skipped} 条，失败 ${res.failed} 条`
@@ -220,13 +255,39 @@ async function importFile(file) {
   }
 }
 
+let cleaning = false // 防重入
 async function doCleanup() {
+  if (cleaning) return
+  const btn = $('#st-cleanup')
+  cleaning = true
+  busy(btn, true)
   try {
     const r = await api.cleanup()
     toast(`已清理：过期 ${r.expired}，超限清理 ${r.evicted}`)
     renderBrowser()
     refreshFilters()
   } catch (e) { toast('清理失败：' + e.message) }
+  finally { cleaning = false; busy(btn, false) }
+}
+
+let reindexing = false // 防重入
+async function doReindex() {
+  if (reindexing) return
+  const btn = $('#st-reindex-btn')
+  reindexing = true
+  busy(btn, true)
+  btn.textContent = '重建中…'
+  try {
+    const r = await api.reindex()
+    $('#st-reindex-note').textContent = ''
+    toast(`索引已重建：${r.processed} 条 · ${r.model} · ${r.latency_ms}ms`)
+  } catch (e) { toast('重建失败：' + e.message) }
+  finally {
+    reindexing = false
+    busy(btn, false)
+    btn.textContent = '重建索引'
+    loadStats()
+  }
 }
 
 /* ---------------- 设置面板 ---------------- */
@@ -312,7 +373,7 @@ const PANEL_TITLES = { browser: '记忆浏览', search: '语义搜索', transfer
 
 function initNav() {
   $$('.sidebar .nav').forEach((nav) => {
-    nav.addEventListener('click', () => {
+    const activate = () => {
       $$('.sidebar .nav').forEach((n) => n.classList.remove('active'))
       nav.classList.add('active')
       const target = nav.dataset.panel
@@ -322,6 +383,11 @@ function initNav() {
       if (target === 'browser') renderBrowser()
       if (target === 'search') $('#sq-input').focus()
       if (target === 'settings') loadConfig()
+    }
+    nav.addEventListener('click', activate)
+    // 键盘可达（导航项带 role=button + tabindex=0）
+    nav.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate() }
     })
   })
 }
@@ -336,6 +402,7 @@ function initEvents() {
   $('#st-hybrid').addEventListener('input', (e) => { $('#st-hybrid-val').textContent = Number(e.target.value).toFixed(2) })
   $('#st-save').addEventListener('click', saveConfig)
   $('#st-cleanup').addEventListener('click', doCleanup)
+  $('#st-reindex-btn').addEventListener('click', doReindex)
   $('#ex-btn').addEventListener('click', doExport)
   $('#theme-btn').addEventListener('click', () => {
     const cur = document.documentElement.getAttribute('data-theme')
@@ -350,7 +417,24 @@ function initEvents() {
     if (del) {
       e.stopPropagation()
       const id = del.dataset.id
-      if (!confirm('确定删除这条记忆？')) return
+      // 两步内联确认：第一次点击进入确认态（3.5s），第二次点击执行
+      if (del.dataset.armed !== '1') {
+        del.dataset.orig = del.textContent
+        del.dataset.armed = '1'
+        del.textContent = '确认删除？'
+        del.classList.add('confirming')
+        setTimeout(() => {
+          if (del.dataset.armed === '1') {
+            delete del.dataset.armed
+            del.textContent = del.dataset.orig
+            del.classList.remove('confirming')
+          }
+        }, 3500)
+        return
+      }
+      delete del.dataset.armed
+      del.textContent = del.dataset.orig
+      del.classList.remove('confirming')
       try {
         await api.deleteMemory(id)
         toast('已删除')
@@ -377,9 +461,15 @@ function initEvents() {
 }
 
 async function init() {
-  // 主题
-  const savedTheme = localStorage.getItem('dsh_mem_theme') || 'light'
-  document.documentElement.setAttribute('data-theme', savedTheme)
+  // 主题：默认跟随系统/宿主（prefers-color-scheme），用户显式切换后才记住选择
+  const savedTheme = localStorage.getItem('dsh_mem_theme')
+  const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
+  const applyTheme = () => {
+    const t = localStorage.getItem('dsh_mem_theme') || (mq?.matches ? 'dark' : 'light')
+    document.documentElement.setAttribute('data-theme', t)
+  }
+  applyTheme()
+  mq?.addEventListener?.('change', applyTheme)
   initNav()
   initEvents()
   setupImport()

@@ -83,6 +83,7 @@ export class MemoryApi {
   }
   importBackup(text, mode = 'merge') { return this.post('/api/memory/import', { text, mode }) }
   cleanup() { return this.post('/api/memory/cleanup', {}) }
+  reindex() { return this.post('/api/memory/reindex', {}) }
 }
 
 export const api = new MemoryApi()

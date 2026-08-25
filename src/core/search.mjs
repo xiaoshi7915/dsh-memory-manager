@@ -8,8 +8,8 @@ import { countTokens } from './tokenizer.mjs'
 import { tokenizeTerms } from './tokenizer.mjs'
 
 /**
- * 对全量记忆计算关键词分数（map: id -> {recall, balanced}）。
- * 内容为密文，需经 engine.decryptContent 解密后再打分。
+ * 关键词分数（倒排索引加速）：只对与查询共享词项的候选文档打分，
+ * 替代旧版"全表扫描 + 逐条解密 + 分词"（O(全库) → O(命中集)）。
  * balanced = 0.5*recall + 0.5*coverage + 短语命中加成(0.3)。
  * @param {import('./index.mjs').MemoryEngine} engine
  * @param {string[]} queryTerms
@@ -18,20 +18,26 @@ import { tokenizeTerms } from './tokenizer.mjs'
 function keywordScores(engine, queryTerms, queryRaw) {
   const out = new Map()
   if (queryTerms.length === 0) return out
+  // 倒排索引与存储失步（旁路直插/恢复等不走 addMemory 的写入）→ 就地重建后继续
+  if (engine.inverted.docCount() !== engine.store.count()) {
+    engine.inverted.clear()
+    for (const rec of engine.store.list()) {
+      engine.inverted.add(rec.id, tokenizeTerms(engine.decryptContent(rec)))
+    }
+  }
   const qset = new Set(queryTerms)
   const qn = String(queryRaw || '').replace(/\s+/g, '')
-  const records = engine.store.list()
-  for (const rec of records) {
-    const content = engine.decryptContent(rec)
-    const mterms = tokenizeTerms(content)
-    if (mterms.length === 0) continue
-    let common = 0
-    for (const t of mterms) if (qset.has(t)) common += 1
-    const recall = common / mterms.length
-    const coverage = common / Math.min(qset.size, mterms.length)
+  const hits = engine.inverted.lookup(queryTerms)
+  for (const [id, { common, total }] of hits) {
+    if (!total) continue
+    const recall = common / total
+    const coverage = common / Math.min(qset.size, total)
     let kw = 0.5 * recall + 0.5 * coverage
-    if (qn.length >= 2 && content.replace(/\s+/g, '').includes(qn)) kw += 0.3
-    out.set(rec.id, { recall, balanced: Math.min(1, kw) })
+    if (qn.length >= 2) {
+      const rec = engine.store.get(id)
+      if (rec && engine.decryptContent(rec).replace(/\s+/g, '').includes(qn)) kw += 0.3
+    }
+    out.set(id, { recall, balanced: Math.min(1, kw) })
   }
   return out
 }
@@ -50,16 +56,20 @@ export async function search(engine, query, opts = {}) {
 
   const queryVec = await engine.embedding.embed(query)
   const kind = engine.embedding.status().kind
-  // 降级判定：哈希嵌入或 API 嵌入降级后都走关键词为主的分支，避免维度/尺度不匹配导致误杀或乱序
-  const degraded = kind === 'hash' || engine.embedding.status().degraded === true
+  // 降级判定：哈希嵌入、API 嵌入降级、或需重建索引（向量为旧模型）时走关键词为主分支
+  const needsReindex = engine.needsReindex()
+  const degraded = kind === 'hash' || engine.embedding.status().degraded === true || needsReindex
   // 降级（哈希嵌入）会把相似度压缩到较低区间：将配置阈值映射到哈希尺度，
   // 避免真实命中被 0.75 阈值误杀；配置了真实嵌入模型时仍用配置阈值。
   let threshold = opts.threshold ?? engine.config.long_term.similarity_threshold ?? 0.75
   if (degraded) threshold = Math.max(0.38, threshold * 0.5)
 
-  // 向量候选（扩大召回：取 topK * 8 或全部）
-  const vectorHits = engine.vector.search(queryVec, Math.max(topK * 8, 64))
-  const vecMap = new Map(vectorHits.map((h) => [h.id, h.score]))
+  // 向量候选（扩大召回：取 topK * 8 或全部）。需重建索引时向量陈旧 → 不参与打分
+  let vecMap = new Map()
+  if (!needsReindex) {
+    const vectorHits = engine.vector.search(queryVec, Math.max(topK * 8, 64))
+    vecMap = new Map(vectorHits.map((h) => [h.id, h.score]))
+  }
 
   const kwScores = keywordScores(engine, tokenizeTerms(query), query)
 

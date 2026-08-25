@@ -26,8 +26,11 @@ export class Lifecycle {
     if (expired.length === 0) return 0
     const ids = expired.map((r) => r.id)
     const n = this.engine.store.deleteByIds(ids)
-    // 与 deleteByConditions/enforceStorageLimit 保持一致：删除行同时删向量，避免孤儿向量累积
-    for (const id of ids) this.engine.vector.remove(id)
+    // 与 deleteByConditions/enforceStorageLimit 保持一致：删除行同时删向量与倒排索引，避免孤儿数据累积
+    for (const id of ids) {
+      this.engine.vector.remove(id)
+      this.engine.inverted.removeDoc(id)
+    }
     this.engine.invalidateCache(ids)
     return n
   }
@@ -50,6 +53,7 @@ export class Lifecycle {
     for (let i = 0; i < recs.length && deleted < maxDeletable; i += 1) {
       this.engine.store.deleteByIds([recs[i].id])
       this.engine.vector.remove(recs[i].id)
+      this.engine.inverted.removeDoc(recs[i].id)
       this.engine.invalidateCache([recs[i].id])
       deleted += 1
     }
@@ -100,7 +104,10 @@ export class Lifecycle {
       return { deleted_count: 0, affected_sessions: [], freed_tokens: 0 }
     }
     const n = this.engine.store.deleteByIds(ids)
-    for (const id of ids) this.engine.vector.remove(id)
+    for (const id of ids) {
+      this.engine.vector.remove(id)
+      this.engine.inverted.removeDoc(id)
+    }
     this.engine.invalidateCache(ids)
     return {
       deleted_count: n,

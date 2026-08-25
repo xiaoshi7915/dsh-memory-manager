@@ -10,6 +10,7 @@ import { EmbeddingProvider } from './embedding.mjs'
 import { VectorStore } from './vector.mjs'
 import { MemoryCrypto } from './crypto.mjs'
 import { MemoryStore } from './store.mjs'
+import { InvertedIndex } from './inverted.mjs'
 import { search } from './search.mjs'
 import { summarizeSession } from './summarize.mjs'
 import { Lifecycle } from './lifecycle.mjs'
@@ -17,7 +18,7 @@ import { exportBackup, importBackup } from './io.mjs'
 import { stats as collectStats } from './stats.mjs'
 import { loadConfig, saveConfig as saveConfigImpl, embeddingFingerprint, defaultBaseDir } from '../config.mjs'
 import { newId, nowMs, clampImportance, MemoryError, assertString, assertOptionalString, assertTags } from './types.mjs'
-import { countTokens } from './tokenizer.mjs'
+import { countTokens, tokenizeTerms } from './tokenizer.mjs'
 
 export class MemoryEngine {
   /**
@@ -31,6 +32,7 @@ export class MemoryEngine {
     this.lastCompacted = null
     this._embeddingStatus = null
     this._plainCache = new Map() // id -> 解密后的明文（搜索热缓存）
+    this.inverted = new InvertedIndex() // 内存倒排索引（检索时若失步会自愈重建）
   }
 
   /** 创建并初始化引擎。 */
@@ -58,6 +60,11 @@ export class MemoryEngine {
     })
     await engine.embedding.init()
     engine.lifecycle = new Lifecycle(engine)
+    // 倒排索引：启动时全量构建一次（解密+分词），此后 addMemory/删除/导入增量维护
+    engine.inverted.clear()
+    for (const rec of engine.store.list()) {
+      engine.inverted.add(rec.id, tokenizeTerms(engine.decryptContent(rec)))
+    }
     engine._needsReindex = engine.detectReindexNeeded()
     return engine
   }
@@ -118,6 +125,38 @@ export class MemoryEngine {
   }
 
   /**
+   * 重建向量索引（更换嵌入模型后调用）：按当前提供者对全库重嵌入并覆写向量索引。
+   * 内容加密不影响重嵌入（用解密明文）。成功后清 needs_reindex。
+   * @returns {{processed: number, model: string, needs_reindex: boolean, latency_ms: number}}
+   */
+  async reindex() {
+    const t0 = Date.now()
+    const recs = this.store.list()
+    // 模型已变：清嵌入缓存，避免旧模型向量混入
+    try { this.embedding._cache?.clear?.() } catch { /* 忽略 */ }
+    const vec = new Map()
+    for (let i = 0; i < recs.length; i += 1) {
+      const content = this.decryptContent(recs[i])
+      vec.set(recs[i].id, await this.embedding.embed(content))
+    }
+    this.vector.entries = vec
+    this.vector.setModel({
+      kind: this.embedding.status().kind,
+      dim: this.embedding.status().dim,
+      fingerprint: this.embedding.fingerprint(),
+    })
+    this.vector.dirty = true
+    await this.vector.save()
+    this._needsReindex = false
+    return {
+      processed: recs.length,
+      model: this.embedding.fingerprint(),
+      needs_reindex: false,
+      latency_ms: Date.now() - t0,
+    }
+  }
+
+  /**
    * 添加一条长期记忆。
    * @param {{content: string, tags?: string[], importance?: number, is_global?: boolean, sessionId?: string, source?: string, ttl?: number|null, summaryOf?: string|null, skipEncrypt?: boolean}} input
    */
@@ -150,6 +189,7 @@ export class MemoryEngine {
       summary_of: input.summaryOf ?? null,
     })
     this.vector.upsert(id, vec)
+    this.inverted.add(id, tokenizeTerms(content))
     await this.persistVectors()
     // 顺带跑生命周期
     try {
@@ -273,6 +313,17 @@ export class MemoryEngine {
       }
     }
     this.config = await saveConfigImpl(this.baseDir, patch)
+    // 嵌入配置是"冷键"：变更后运行时重建提供者（否则 config 说新模型、实际仍用旧模型重嵌入）。
+    // 加密主密码/开关仍属需重启类（涉及既有密文的派生密钥，已由上方守卫拦截变更）。
+    if (patch?.long_term && ['embedding_model', 'embedding_model_id', 'openai_api_key'].some((k) => patch.long_term[k] !== undefined)) {
+      this.embedding = new EmbeddingProvider({
+        model: this.config.long_term.embedding_model,
+        apiKey: this.config.long_term.openai_api_key ?? '',
+        modelId: this.config.long_term.embedding_model_id,
+        dataDir: path.join(this.baseDir, 'long_term'),
+      })
+      await this.embedding.init()
+    }
     this._needsReindex = this.detectReindexNeeded()
     return this.config
   }

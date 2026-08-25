@@ -55,6 +55,12 @@ async function main() {
   const del = await HANDLERS.memory_delete({ conditions: { tag: '生活' } }, ctx)
   r(check('memory_delete', del.deleted_count >= 1 && Array.isArray(del.affected_sessions) && del.freed_tokens >= 0, JSON.stringify(del)))
 
+  // 倒排索引一致性（新增覆盖：删除后关键词分支同步移除）
+  const afterDel = await engine.search('咪咪', { sessionId: ctx.sessionId, topK: 3, threshold: 0.05 })
+  r(check('倒排-删除后关键词不再命中', !afterDel.results.some((x) => x.content.includes('咪咪')), `total=${afterDel.total}`))
+  r(check('倒排-索引与存储一致', engine.inverted.docCount() === engine.store.count(),
+    `inverted=${engine.inverted.docCount()} store=${engine.store.count()}`))
+
   const stats = await HANDLERS.memory_stats({}, ctx)
   r(check('memory_stats', typeof stats.total_memories === 'number' && typeof stats.storage_size_mb === 'number', JSON.stringify(stats)))
 
@@ -104,6 +110,9 @@ async function main() {
   r(check('REST import', typeof impR.imported === 'number' && typeof impR.skipped === 'number', JSON.stringify(impR)))
   const clean = await jpost('/api/memory/cleanup', {})
   r(check('REST cleanup', typeof clean.expired === 'number', JSON.stringify(clean)))
+  const reidx = await jpost('/api/memory/reindex', {})
+  r(check('REST reindex', typeof reidx.processed === 'number' && reidx.needs_reindex === false && typeof reidx.latency_ms === 'number',
+    JSON.stringify(reidx)))
   server.close()
 
   // ---- 汇总 ----
