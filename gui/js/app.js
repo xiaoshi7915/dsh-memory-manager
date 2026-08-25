@@ -63,8 +63,34 @@ const state = {
   memories: [],
   filters: { session: '', global: '', tag: '' },
   config: null,
+  mode: 'browse', // 'browse'（记忆列表） | 'search'（语义检索结果，内嵌于同一面板）
   browser: { page: 0, pageSize: 50, total: 0 }, // 记忆浏览分页（0-based）
   search: { page: 0, pageSize: 5, total: 0 }, // 语义搜索分页（页大小 = Top-K）
+}
+
+/* ---------------- 浏览/搜索 视图切换（同面板内嵌） ---------------- */
+
+/** 进入搜索模式：隐藏浏览列表，显示检索结果。 */
+function enterSearchMode() {
+  state.mode = 'search'
+  $('#browser-list').hidden = true
+  $('#browser-pager').hidden = true
+  $('#search-results').hidden = false
+  $('#search-pager').hidden = false
+  $('#sq-clear').hidden = false
+}
+
+/** 退出搜索模式回到浏览列表（清空检索结果）。 */
+function clearSearch() {
+  state.mode = 'browse'
+  $('#search-results').hidden = true
+  $('#search-results').innerHTML = ''
+  $('#search-pager').hidden = true
+  $('#browser-list').hidden = false
+  $('#browser-pager').hidden = false
+  $('#sq-clear').hidden = true
+  state.search = { page: 0, pageSize: 5, total: 0 }
+  renderBrowser()
 }
 
 /* ---------------- 工具函数 ---------------- */
@@ -227,13 +253,14 @@ async function refreshFilters() {
   } catch { /* 忽略 */ }
 }
 
-/* ---------------- 语义搜索面板 ---------------- */
+/* ---------------- 内嵌语义搜索（记忆浏览内） ---------------- */
 async function doSearch(opts = {}) {
   const query = $('#sq-input').value.trim()
   const box = $('#search-results')
   const pager = $('#search-pager')
-  if (!query) { box.innerHTML = emptyBox('输入检索内容', '例如：我喜欢用什么语言做数据分析'); pager.hidden = true; return }
+  if (!query) { return } // 空查询不动作（清空由「清除检索」/筛选变化处理）
   if (!opts.keepPage) state.search.page = 0
+  enterSearchMode()
   box.innerHTML = spinner('正在检索…')
   const btn = $('#sq-btn')
   busy(btn, true)
@@ -322,7 +349,7 @@ async function importFile(file) {
     const res = await api.importBackup(text, mode)
     log.textContent = `读取完成：${file.name}（${text.length} 字符）\n导入 ${res.imported} 条，跳过 ${res.skipped} 条，失败 ${res.failed} 条`
     toast(`导入完成：${res.imported} 条`)
-    renderBrowser()
+    clearSearch()
     refreshFilters()
   } catch (e) {
     log.textContent += `错误：${e.message}`
@@ -339,7 +366,7 @@ async function doCleanup() {
   try {
     const r = await api.cleanup()
     toast(`已清理：过期 ${r.expired}，超限清理 ${r.evicted}`)
-    renderBrowser()
+    clearSearch()
     refreshFilters()
   } catch (e) { toast('清理失败：' + e.message) }
   finally { cleaning = false; busy(btn, false) }
@@ -444,7 +471,7 @@ async function saveConfig() {
 }
 
 /* ---------------- 初始化 ---------------- */
-const PANEL_TITLES = { browser: '记忆浏览', search: '语义搜索', transfer: '导入导出', settings: '设置' }
+const PANEL_TITLES = { browser: '记忆浏览', settings: '记忆设置' }
 
 function initNav() {
   $$('.sidebar .nav').forEach((nav) => {
@@ -455,8 +482,7 @@ function initNav() {
       $$('.panel').forEach((p) => p.classList.remove('active'))
       $(`#panel-${target}`).classList.add('active')
       if (PANEL_TITLES[target]) $('#page-title').textContent = PANEL_TITLES[target]
-      if (target === 'browser') renderBrowser()
-      if (target === 'search') $('#sq-input').focus()
+      if (target === 'browser') { if (state.mode === 'browse') renderBrowser() }
       if (target === 'settings') loadConfig()
     }
     nav.addEventListener('click', activate)
@@ -467,12 +493,23 @@ function initNav() {
   })
 }
 
+/* ---------------- 导入导出模态 ---------------- */
+function openTransfer() { $('#transfer-modal').hidden = false }
+function closeTransfer() { $('#transfer-modal').hidden = true }
+function initTransferModal() {
+  $('#transfer-btn').addEventListener('click', openTransfer)
+  $('#tm-close').addEventListener('click', closeTransfer)
+  $('#transfer-modal').addEventListener('click', (e) => { if (e.target === $('#transfer-modal')) closeTransfer() })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#transfer-modal').hidden) closeTransfer() })
+}
+
 function initEvents() {
-  $('#f-session').addEventListener('change', (e) => { state.filters.session = e.target.value; state.browser.page = 0; renderBrowser() })
-  $$('input[name="f-global"]').forEach((r) => r.addEventListener('change', (e) => { state.filters.global = e.target.value; state.browser.page = 0; renderBrowser() }))
-  $('#browse-refresh').addEventListener('click', () => { state.browser.page = 0; renderBrowser(); refreshFilters(); loadStats(); toast('已刷新') })
+  $('#f-session').addEventListener('change', (e) => { state.filters.session = e.target.value; state.browser.page = 0; clearSearch() })
+  $$('input[name="f-global"]').forEach((r) => r.addEventListener('change', (e) => { state.filters.global = e.target.value; state.browser.page = 0; clearSearch() }))
+  $('#browse-refresh').addEventListener('click', () => { state.browser.page = 0; clearSearch(); refreshFilters(); loadStats(); toast('已刷新') })
   $('#sq-btn').addEventListener('click', () => doSearch())
   $('#sq-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
+  $('#sq-clear').addEventListener('click', () => { $('#sq-input').value = ''; clearSearch() })
   $('#st-thr').addEventListener('input', (e) => { $('#st-thr-val').textContent = Number(e.target.value).toFixed(2) })
   $('#st-hybrid').addEventListener('input', (e) => { $('#st-hybrid-val').textContent = Number(e.target.value).toFixed(2) })
   $('#st-save').addEventListener('click', saveConfig)
@@ -513,7 +550,7 @@ function initEvents() {
       try {
         await api.deleteMemory(id)
         toast('已删除')
-        renderBrowser()
+        if (state.mode === 'search') { doSearch({ keepPage: true }) } else { renderBrowser() }
         refreshFilters()
       } catch (err) { toast('删除失败：' + err.message) }
       return
@@ -529,7 +566,7 @@ function initEvents() {
       try {
         await api.importance(id, next)
         toast(`重要度 ${cur} → ${next}`)
-        renderBrowser()
+        if (state.mode === 'search') { doSearch({ keepPage: true }) } else { renderBrowser() }
       } catch (err) { toast('更新失败：' + err.message) }
     }
   })
@@ -548,6 +585,7 @@ async function init() {
   initNav()
   initEvents()
   setupImport()
+  initTransferModal()
   // 状态
   try {
     await api.healthz()

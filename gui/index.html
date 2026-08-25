@@ -8,13 +8,11 @@
 </head>
 <body>
   <div class="app">
-    <!-- 侧边栏 -->
+    <!-- 侧边栏（两项：记忆浏览 / 记忆设置） -->
     <aside class="sidebar">
       <div class="brand"><span class="emoji">🧠</span>记忆管理</div>
       <div class="nav active" data-panel="browser" role="button" tabindex="0" aria-label="记忆浏览"><span class="icon">🕘</span>记忆浏览</div>
-      <div class="nav" data-panel="search" role="button" tabindex="0" aria-label="语义搜索"><span class="icon">🔍</span>语义搜索</div>
-      <div class="nav" data-panel="transfer" role="button" tabindex="0" aria-label="导入导出"><span class="icon">⇅</span>导入导出</div>
-      <div class="nav" data-panel="settings" role="button" tabindex="0" aria-label="设置"><span class="icon">⚙️</span>设置</div>
+      <div class="nav" data-panel="settings" role="button" tabindex="0" aria-label="记忆设置"><span class="icon">⚙️</span>记忆设置</div>
       <div class="foot">
         <span id="status-dot" class="status-dot off"></span><span id="status-label">连接中…</span><br/>
         <span class="hint">dsh-memory-manager v1.0.0</span>
@@ -30,7 +28,7 @@
       </header>
 
       <div class="content">
-        <!-- 记忆浏览 -->
+        <!-- 记忆浏览（含内嵌语义搜索 + 导入导出入口） -->
         <section class="panel active" id="panel-browser">
           <div class="stat-strip">
             <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
@@ -39,25 +37,13 @@
             <div class="stat"><div class="num" id="st-size">-</div><div class="lbl">存储占用</div></div>
             <div class="stat"><div class="num" id="st-emb">-</div><div class="lbl">嵌入模型</div></div>
           </div>
-          <div class="toolbar">
-            <select id="f-session" style="min-width:150px"><option value="">全部会话</option></select>
-            <label class="chip clickable"><input type="radio" name="f-global" value="" checked style="display:none"/>全部</label>
-            <label class="chip clickable"><input type="radio" name="f-global" value="1" style="display:none"/>🌍 全局</label>
-            <label class="chip clickable"><input type="radio" name="f-global" value="0" style="display:none"/>🔒 本地</label>
-            <div class="grow"></div>
-            <button class="btn ghost sm" id="browse-refresh">刷新</button>
-          </div>
-          <div class="toolbar" id="f-tags"></div>
-          <div id="browser-list"></div>
-          <div class="pager" id="browser-pager" hidden></div>
-        </section>
 
-        <!-- 语义搜索 -->
-        <section class="panel" id="panel-search">
-          <div class="card">
+          <!-- 内嵌语义搜索（搜索参数在此选择） -->
+          <div class="card" id="search-card">
             <div class="search-box">
-              <input id="sq-input" type="text" placeholder="搜索记忆，例如：我喜欢用什么语言做数据分析？" />
+              <input id="sq-input" type="text" placeholder="🔍 搜索记忆，例如：我喜欢用什么语言做数据分析？" />
               <button class="btn" id="sq-btn">检索</button>
+              <button class="btn ghost sm" id="sq-clear" hidden>清除检索</button>
             </div>
             <div class="toolbar" style="margin:12px 0 0">
               <label class="field"><span>Top-K</span>
@@ -74,43 +60,27 @@
               </label>
             </div>
           </div>
-          <div id="search-results"></div>
+
+          <div class="toolbar">
+            <select id="f-session" style="min-width:150px"><option value="">全部会话</option></select>
+            <label class="chip clickable"><input type="radio" name="f-global" value="" checked style="display:none"/>全部</label>
+            <label class="chip clickable"><input type="radio" name="f-global" value="1" style="display:none"/>🌍 全局</label>
+            <label class="chip clickable"><input type="radio" name="f-global" value="0" style="display:none"/>🔒 本地</label>
+            <div class="grow"></div>
+            <button class="btn ghost sm" id="transfer-btn">⇅ 导入导出</button>
+            <button class="btn ghost sm" id="browse-refresh">刷新</button>
+          </div>
+          <div class="toolbar" id="f-tags"></div>
+
+          <!-- 记忆列表（浏览模式） -->
+          <div id="browser-list"></div>
+          <div class="pager" id="browser-pager" hidden></div>
+          <!-- 语义搜索结果（搜索模式，内嵌于同一面板） -->
+          <div id="search-results" hidden></div>
           <div class="pager" id="search-pager" hidden></div>
         </section>
 
-        <!-- 导入导出 -->
-        <section class="panel" id="panel-transfer">
-          <div class="card">
-            <h3>⬇️ 导出备份</h3>
-            <div class="f-row">
-              <label class="field"><span>格式</span>
-                <select id="ex-format"><option value="json">JSON（含版本/统计头）</option><option value="jsonl">JSONL（每行一条）</option></select>
-              </label>
-              <div style="display:flex;align-items:flex-end"><button class="btn" id="ex-btn">导出并下载</button></div>
-            </div>
-          </div>
-          <div class="card">
-            <h3>⬆️ 导入备份</h3>
-            <div class="dropzone" id="dz">
-              <div style="font-size:26px">📂</div>
-              点击选择文件，或将 JSON / JSONL 备份拖放到此处
-              <input type="file" id="dz-file" accept=".json,.jsonl,application/json" style="display:none" />
-            </div>
-            <div class="f-row" style="align-items:flex-end">
-              <label class="field"><span>导入模式</span>
-                <select id="im-mode"><option value="merge">合并（跳过已存在）</option><option value="replace">替换（清空后导入）</option></select>
-              </label>
-            </div>
-            <pre class="import-log" id="import-log"></pre>
-          </div>
-          <div class="card">
-            <h3>🧹 存储清理</h3>
-            <p class="hint">手动触发 TTL 过期清理与存储超限（LRU + 低重要性优先）清理。</p>
-            <button class="btn ghost" id="st-cleanup">立即清理</button>
-          </div>
-        </section>
-
-        <!-- 设置 -->
+        <!-- 记忆设置 -->
         <section class="panel" id="panel-settings">
           <div id="settings-msg"></div>
           <div class="card">
@@ -159,6 +129,46 @@
         </section>
       </div>
     </main>
+  </div>
+
+  <!-- 导入导出模态（由记忆浏览工具栏的「⇅ 导入导出」按钮打开） -->
+  <div class="overlay" id="transfer-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="导入导出">
+      <div class="modal-head">
+        <h3>⇅ 导入导出</h3>
+        <button class="btn ghost sm" id="tm-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="card">
+          <h3>⬇️ 导出备份</h3>
+          <div class="f-row">
+            <label class="field"><span>格式</span>
+              <select id="ex-format"><option value="json">JSON（含版本/统计头）</option><option value="jsonl">JSONL（每行一条）</option></select>
+            </label>
+            <div style="display:flex;align-items:flex-end"><button class="btn" id="ex-btn">导出并下载</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>⬆️ 导入备份</h3>
+          <div class="dropzone" id="dz">
+            <div style="font-size:26px">📂</div>
+            点击选择文件，或将 JSON / JSONL 备份拖放到此处
+            <input type="file" id="dz-file" accept=".json,.jsonl,application/json" style="display:none" />
+          </div>
+          <div class="f-row" style="align-items:flex-end">
+            <label class="field"><span>导入模式</span>
+              <select id="im-mode"><option value="merge">合并（跳过已存在）</option><option value="replace">替换（清空后导入）</option></select>
+            </label>
+          </div>
+          <pre class="import-log" id="import-log"></pre>
+        </div>
+        <div class="card">
+          <h3>🧹 存储清理</h3>
+          <p class="hint">手动触发 TTL 过期清理与存储超限（LRU + 低重要性优先）清理。</p>
+          <button class="btn ghost" id="st-cleanup">立即清理</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

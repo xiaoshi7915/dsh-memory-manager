@@ -99,6 +99,39 @@ a { color: var(--accent); text-decoration: none; }
 .panel { display: none; }
 .panel.active { display: block; }
 
+/* [hidden] 优先级：author CSS 的 display（如 .btn/.pager 的 flex）会覆盖 UA 的
+   display:none，必须 !important 保证 hidden 元素真正隐藏（分页/搜索模式/模态切换依赖）。 */
+[hidden] { display: none !important; }
+
+/* 模态（导入导出） */
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.overlay[hidden] { display: none; }
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  width: min(680px, 100%);
+  max-height: min(84vh, 720px);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.modal-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.modal-head h3 { margin: 0; font-size: 15px; font-weight: 650; flex: 1; }
+.modal-body { flex: 1; overflow: auto; padding: 16px 18px; }
+
+/* 记忆浏览内嵌搜索卡片：与下方筛选工具条留白 */
+#search-card { margin-bottom: 16px; }
+#sq-clear { flex-shrink: 0; }
+
 /* 工具条 */
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .toolbar .grow { flex: 1; }
