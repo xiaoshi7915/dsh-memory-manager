@@ -57,17 +57,19 @@ npm run serve          # 默认 http://127.0.0.1:4599，PORT 可覆盖
 # 打开浏览器访问 http://127.0.0.1:4599/ 即可使用 Web GUI
 ```
 
-数据目录默认 `~/.dsh/memory/`，可用环境变量 `DSH_MEMORY_DIR` 覆盖：
+数据目录默认 `~/.dsh/memory-manager/`（P0 起与 dsh-layered-memory 解耦的专属目录；首次启动自动把旧 `~/.dsh/memory` 中本插件白名单文件迁移过来，源文件保留为 `*.migrated-<ts>` 墓碑）。可用环境变量 `DSH_MEMORY_DIR` 覆盖：
 
 ```
-~/.dsh/memory/
+~/.dsh/memory-manager/
 ├── config.json              # 配置（自动生成默认值）
 ├── short_term/{session}.jsonl  # 短期滑动窗口
 ├── long_term/
 │   ├── memories.db          # SQLite 元数据（内容默认加密）
-│   ├── vector.index         # 向量索引
+│   ├── vector.index         # 向量索引（原子写，崩溃不留半写）
 │   └── embeddings/          # 嵌入模型缓存
 ├── .salt / .key             # 加密盐与随机密钥
+├── .lock                    # 单写者锁（防止插件/独立服务双写）
+└── migration.json           # 目录迁移审计记录
 ```
 
 ### 作为 DSH 插件运行
@@ -124,7 +126,7 @@ dsh plugin add xiaoshi7915/dsh-memory-manager
 ```bash
 npm run verify     # 完整验收，输出 scripts/verify-report.md
 npm run smoke      # 端到端冒烟（工具 + REST），输出 scripts/smoke-report.md
-npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory）
+npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-manager）
 ```
 
 > 降级模式说明：未配置真实嵌入模型时，检索以「哈希向量(0.25) + 关键词(0.75)」融合，并把配置阈值（默认 0.75）自适应映射到哈希尺度（`max(0.38, thr*0.5)`），保证真实命中不被误杀；配置真实模型（local/OpenAI）后即用配置阈值。
