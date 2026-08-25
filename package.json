@@ -9,7 +9,8 @@
     "./engine": "./src/core/index.mjs",
     "./handlers": "./src/tools/handlers.mjs",
     "./config": "./src/config.mjs",
-    "./client": "./src/client/bundle.js"
+    "./client": "./src/client/bundle.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "src",
@@ -28,6 +29,7 @@
     "smoke": "node scripts/smoke.mjs",
     "integration": "node scripts/dsh-integration.mjs",
     "client": "node scripts/client-bundle-probe.mjs",
+    "activate": "node scripts/profile-activate-probe.mjs",
     "serve": "node src/server/index.mjs",
     "preview": "node src/server/index.mjs"
   },
