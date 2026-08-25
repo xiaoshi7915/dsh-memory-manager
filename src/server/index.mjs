@@ -1,7 +1,7 @@
 /**
  * 独立 HTTP 服务器入口：无需 DSH workspace 即可运行演示/验收。
  * 用法：node server/index.mjs  （PORT 环境变量可覆盖端口，默认 4599）
- * 数据目录：DSH_MEMORY_DIR 环境变量或 ~/.dsh/memory
+ * 数据目录：DSH_MEMORY_DIR 环境变量或 ~/.dsh/memory-manager（首次自动迁移旧 ~/.dsh/memory）
  * @module src/server/index
  */
 
@@ -41,6 +41,12 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error('启动失败:', e.message)
+  if (e?.code === 'LOCKED') {
+    console.error('[dsh-memory-manager]', e.message)
+    console.error('  数据目录正被另一进程占用（例如 DSH 插件实例）。请先停止占用方，')
+    console.error('  或通过 DSH_MEMORY_DIR 指定其他目录再启动独立服务。')
+  } else {
+    console.error('启动失败:', e.message)
+  }
   process.exit(1)
 })

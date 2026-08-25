@@ -94,8 +94,17 @@
 ### 仍待办
 | 优先级 | 问题 | 方向 |
 |---|---|---|
-| P1 | persistVectors 全量 JSON 覆写 + 并发写可覆盖（O(N²) 悬崖） | 串行队列+原子写( tmp+rename )，或向量并入 SQLite BLOB 同事务 |
-| P1 | 插件与 `npm run serve` 独立服务器共用数据目录双写 | 目录文件锁 .lock 拒绝双写；README 声明 |
-| P1 | GUI 记忆列表无分页（固定 limit 200，老记忆不可达）；会话下拉仅前 500 条 | offset 翻页 + distinct 会话接口 |
+| ~~P1~~ ✅ | persistVectors 全量 JSON 覆写 + 并发写可覆盖（O(N²) 悬崖） | **P0 已实现**：`src/core/atomic.mjs` writeFileAtomic（tmp+fsync+rename）；VectorStore.save() 串行合并队列折叠并发写；启动 recoverTmp 清孤儿；persistVectors 吞错+保留 dirty 自愈（scripts/p0-test.mjs A 组 4/4） |
+| ~~P1~~ ✅ | 插件与 `npm run serve` 独立服务器共用数据目录双写 | **P0 已实现**：`src/core/lock.mjs` DirLock 单写者锁（wx 原子创建 + pid 判活陈旧接管 + 仅创建者可删）；serve/plugin 双实例 LOCKED 快速失败（p0-test B/D 组） |
+| P1 | ~~GUI 记忆列表无分页~~ → 并存后 P3：GUI 真分页（服务端 LIMIT/OFFSET + `GET /api/memory/meta` 去 limit:500 缺陷） | offset 翻页 + distinct 会话接口（并入共存设计 P3） |
 | P1 | 隐式注入（turn/start 注入 buildInjection）未接线 | 确认 DSH 注入接口后实现，或降级验收承诺 |
 | P2 | triggers 死代码未接线；_plainCache 无上限；prepared statement 未复用 | 接线或删除；LRU 上限；open() 预编译 |
+
+### 第四轮：共存加固 P0（2026-08-25，接第三轮仍待办 + 4 专家共存方案）
+| 项 | 落地 |
+|---|---|
+| ✅ 目录迁移 | `src/core/migrate.mjs` 白名单（config.json/.key/.salt/long_term/short_term）复制→SHA-256→源墓碑 `*.migrated-<ts>`→migration.json；SQLite checkpoint fail-closed（MIGRATION_BUSY）；dryRun/幂等/显式目录守卫；`defaultBaseDir()`→`~/.dsh/memory-manager`（config.mjs legacyBaseDir + 共享目录告警）；启动自动迁移在 `MemoryEngine.create()` 锁内 |
+| ✅ 单写者锁 | `src/core/lock.mjs`（.lock wx 创建、pid 判活接管、仅创建者删除、心跳刷新）；create() 先锁后迁移/加载，close()/异常路径统一释放；server LOCKED 快速失败提示 |
+| ✅ 原子写 | 见上表 persistVectors 行 |
+| ✅ 验证 | `scripts/p0-test.mjs` 30/30（纯临时目录，含 layered 文件不可碰断言 C4、坏库 fail-closed C9、双实例 LOCKED D3） |
+| 📄 设计存档 | `docs/coexistence-design.md`（**不提交 git**，供 P1 工具改名 mm_* / P2 事件协调 / P3 GUI 分页对照） |

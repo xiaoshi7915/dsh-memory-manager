@@ -16,9 +16,11 @@ import { summarizeSession } from './summarize.mjs'
 import { Lifecycle } from './lifecycle.mjs'
 import { exportBackup, importBackup } from './io.mjs'
 import { stats as collectStats } from './stats.mjs'
-import { loadConfig, saveConfig as saveConfigImpl, embeddingFingerprint, defaultBaseDir } from '../config.mjs'
+import { loadConfig, saveConfig as saveConfigImpl, embeddingFingerprint, defaultBaseDir, isSharedLegacyDir } from '../config.mjs'
 import { newId, nowMs, clampImportance, MemoryError, assertString, assertOptionalString, assertTags } from './types.mjs'
 import { countTokens, tokenizeTerms } from './tokenizer.mjs'
+import { DirLock } from './lock.mjs'
+import { maybeMigrateLegacy } from './migrate.mjs'
 
 export class MemoryEngine {
   /**
@@ -37,36 +39,69 @@ export class MemoryEngine {
 
   /** 创建并初始化引擎。 */
   static async create(opts = {}) {
+    const explicit = Boolean(opts.baseDir || process.env.DSH_MEMORY_DIR)
     const baseDir = opts.baseDir || process.env.DSH_MEMORY_DIR || defaultBaseDir()
-    const config = await loadConfig(baseDir)
-    const engine = new MemoryEngine({ baseDir, config, masterPassword: opts.masterPassword })
-    engine.shortTerm = new ShortTermStore(baseDir)
-    engine.store = new MemoryStore(path.join(baseDir, 'long_term', 'memories.db'))
-    engine.store.open()
-    engine.vector = new VectorStore(path.join(baseDir, 'long_term', 'vector.index'))
-    engine.vector.load()
-    engine.crypto = new MemoryCrypto({
-      enabled: config.storage.encryption_enabled,
-      masterPassword: engine.masterPassword,
-      saltFile: path.join(baseDir, '.salt'),
-      keyFile: path.join(baseDir, '.key'),
-    })
-    await engine.crypto.init()
-    engine.embedding = new EmbeddingProvider({
-      model: config.long_term.embedding_model,
-      apiKey: config.long_term.openai_api_key ?? '',
-      modelId: config.long_term.embedding_model_id,
-      dataDir: path.join(baseDir, 'long_term'),
-    })
-    await engine.embedding.init()
-    engine.lifecycle = new Lifecycle(engine)
-    // 倒排索引：启动时全量构建一次（解密+分词），此后 addMemory/删除/导入增量维护
-    engine.inverted.clear()
-    for (const rec of engine.store.list()) {
-      engine.inverted.add(rec.id, tokenizeTerms(engine.decryptContent(rec)))
+    if (explicit && isSharedLegacyDir(baseDir)) {
+      console.warn('[dsh-memory-manager] 警告：DSH_MEMORY_DIR 指向 ~/.dsh/memory（与 dsh-layered-memory 共享目录），存在数据冲突风险，建议改用专属目录（默认 ~/.dsh/memory-manager）')
     }
-    engine._needsReindex = engine.detectReindexNeeded()
-    return engine
+    const engine = new MemoryEngine({ baseDir, masterPassword: opts.masterPassword })
+    // P0 单写者锁：任何读写前先获取；已被其他进程持有 → 快速失败（LOCKED）
+    engine.acquireDirLock()
+    try {
+      // P0 目录迁移：仅默认目录自动迁移（显式指定目录不动，尊重用户）
+      const migrated = await maybeMigrateLegacy(baseDir, { allow: !explicit })
+      if (migrated.migrated) {
+        console.warn(`[dsh-memory-manager] 数据目录已迁移：${migrated.from} → ${migrated.to}（${migrated.moved.join(', ')}）`)
+      }
+      engine.config = await loadConfig(baseDir)
+      engine.masterPassword = opts.masterPassword ?? engine.config?.storage?.master_password ?? ''
+      engine.shortTerm = new ShortTermStore(baseDir)
+      engine.store = new MemoryStore(path.join(baseDir, 'long_term', 'memories.db'))
+      engine.store.open()
+      engine.vector = new VectorStore(path.join(baseDir, 'long_term', 'vector.index'))
+      engine.vector.load()
+      await engine.vector.recoverTmp()
+      engine.crypto = new MemoryCrypto({
+        enabled: engine.config.storage.encryption_enabled,
+        masterPassword: engine.masterPassword,
+        saltFile: path.join(baseDir, '.salt'),
+        keyFile: path.join(baseDir, '.key'),
+      })
+      await engine.crypto.init()
+      engine.embedding = new EmbeddingProvider({
+        model: engine.config.long_term.embedding_model,
+        apiKey: engine.config.long_term.openai_api_key ?? '',
+        modelId: engine.config.long_term.embedding_model_id,
+        dataDir: path.join(baseDir, 'long_term'),
+      })
+      await engine.embedding.init()
+      engine.lifecycle = new Lifecycle(engine)
+      // 倒排索引：启动时全量构建一次（解密+分词），此后 addMemory/删除/导入增量维护
+      engine.inverted.clear()
+      for (const rec of engine.store.list()) {
+        engine.inverted.add(rec.id, tokenizeTerms(engine.decryptContent(rec)))
+      }
+      engine._needsReindex = engine.detectReindexNeeded()
+      return engine
+    } catch (e) {
+      engine.releaseDirLock()
+      throw e
+    }
+  }
+
+  /** P0 单写者锁：获取数据目录锁（已被其他进程持有则抛 LOCKED）。 */
+  acquireDirLock() {
+    this.lock = new DirLock(this.baseDir, { mode: 'plugin' })
+    this.lock.acquire()
+    return this.lock
+  }
+
+  /** 释放单写者锁（仅创建者删除）。 */
+  releaseDirLock() {
+    if (this.lock) {
+      try { this.lock.release() } catch { /* 忽略 */ }
+      this.lock = null
+    }
   }
 
   countTokens(text) {
@@ -120,7 +155,12 @@ export class MemoryEngine {
         dim: this.embedding.status().dim,
         fingerprint: this.embedding.fingerprint(),
       })
-      await this.vector.save()
+      try {
+        await this.vector.save()
+      } catch (err) {
+        // P0 原子写容错：吞错 + 保留 dirty，下次写入自愈；不阻断 addMemory 主流程
+        console.warn(`[dsh-memory-manager] 向量索引持久化失败（将稍后重试）: ${err.message}`)
+      }
     }
   }
 
@@ -330,7 +370,8 @@ export class MemoryEngine {
 
   async close() {
     try { await this.persistVectors() } catch { /* 忽略 */ }
-    this.store.close()
+    try { this.store.close() } catch { /* 忽略 */ }
+    this.releaseDirLock()
   }
 }
 

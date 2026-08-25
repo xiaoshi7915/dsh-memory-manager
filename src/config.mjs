@@ -11,9 +11,23 @@ import { DEFAULT_CONFIG } from './core/types.mjs'
 
 const CONFIG_FILE = 'config.json'
 
-/** 数据根目录（环境变量可覆盖，默认 ~/.dsh/memory）。 */
+/**
+ * 数据根目录（环境变量可覆盖，默认 ~/.dsh/memory-manager）。
+ * P0 目录迁移：旧默认 ~/.dsh/memory 曾与 dsh-layered-memory 混居，
+ * 现切到专属目录，启动时把 manager 白名单文件自动迁移过去（见 core/migrate.mjs）。
+ */
 export function defaultBaseDir() {
-  return process.env.DSH_MEMORY_DIR || path.join(os.homedir(), '.dsh', 'memory')
+  return process.env.DSH_MEMORY_DIR || path.join(os.homedir(), '.dsh', 'memory-manager')
+}
+
+/** 旧默认目录（与 dsh-layered-memory 混居的 ~/.dsh/memory）。DSH_MEMORY_LEGACY_DIR 供测试注入。 */
+export function legacyBaseDir() {
+  return process.env.DSH_MEMORY_LEGACY_DIR || path.join(os.homedir(), '.dsh', 'memory')
+}
+
+/** 是否显式指到了共享旧目录（存在与 layered-memory 混居的风险，需告警）。 */
+export function isSharedLegacyDir(dir) {
+  return Boolean(dir) && path.resolve(dir) === path.resolve(legacyBaseDir())
 }
 
 /** 深合并默认配置与用户配置（用户值优先）。 */
