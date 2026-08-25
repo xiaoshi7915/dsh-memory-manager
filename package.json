@@ -31,6 +31,8 @@
     "client": "node scripts/client-bundle-probe.mjs",
     "activate": "node scripts/profile-activate-probe.mjs",
     "hardening": "node scripts/hardening-encryption-test.mjs",
+    "layered": "node scripts/layered-endpoints-test.mjs",
+    "gui:layered": "node scripts/gui-layered-logic-test.mjs",
     "serve": "node src/server/index.mjs",
     "preview": "node src/server/index.mjs"
   },

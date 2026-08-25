@@ -188,10 +188,13 @@ async function handle(req, res, getEngine) {
         sendJson(res, 200, lr.scenes({ family: sp.get('family') || undefined }))
         return
       }
-      // L2 单个场景内容
+      // L2 单个场景内容（路径段含中文/空格需 percent-decode；Node URL.pathname 不解码）
       const sceneMatch = lrel.match(/^scenes\/([^/]+)\/([^/]+)$/)
       if (method === 'GET' && sceneMatch) {
-        sendJson(res, 200, lr.scene({ family: sceneMatch[1], name: sceneMatch[2] }))
+        let fam, name
+        try { fam = decodeURIComponent(sceneMatch[1]); name = decodeURIComponent(sceneMatch[2]) }
+        catch { sendError(res, 'VALIDATION_ERROR', '路径解码失败', 400); return }
+        sendJson(res, 200, lr.scene({ family: fam, name }))
         return
       }
       // L3 画像

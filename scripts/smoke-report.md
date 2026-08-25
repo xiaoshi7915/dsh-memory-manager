@@ -1,17 +1,17 @@
 # dsh-memory-manager 冒烟测试报告
 
-- 数据目录：`C:\Users\50251\Desktop\UAP\模型能力调研\dsh-memory-manager\test-data\smoke-1787690965542`
-- 生成时间：2026-08-25T20:49:25.880Z
+- 数据目录：`C:\Users\50251\Desktop\UAP\模型能力调研\dsh-memory-manager\test-data\smoke-1787691301597`
+- 生成时间：2026-08-25T20:55:01.963Z
 - 结论：**30/30 项通过**
 
 | 检查项 | 结果 | 说明 |
 |--------|------|------|
-| mm_add | ✅ | {"success":true,"memory_id":"1d5af397-ca4e-4ad1-9ca0-2b047fa05bbf","embedding_status":"degraded","token_cost":8} |
-| mm_add(global) | ✅ | {"success":true,"memory_id":"612db8b4-fe04-46eb-a086-4136189cc2c7","embedding_status":"degraded","token_cost":11} |
-| mm_search | ✅ | results=1 top=我的宠物猫叫咪咪 score=0.4227 latency=6ms |
+| mm_add | ✅ | {"success":true,"memory_id":"5f182982-0694-41bd-94f3-7e7f69ca49ee","embedding_status":"degraded","token_cost":8} |
+| mm_add(global) | ✅ | {"success":true,"memory_id":"86553d39-dc7e-403e-8355-6535df7a40e9","embedding_status":"degraded","token_cost":11} |
+| mm_search | ✅ | results=1 top=我的宠物猫叫咪咪 score=0.4227 latency=4ms |
 | mm_get_recent | ✅ | {"messages":[{"role":"user","content":"我们讨论一下周末去哪玩"}],"token_count":11,"window_size":1,"truncated":false} |
-| mm_summarize | ✅ | {"summary":"用户：我们讨论一下周末去哪玩","memory_id":"cbcaca6d-8334-4236-a2d6-08fb6e547610","compressed_from":1,"saved_tokens":0,"via":"extractive"} |
-| mm_update_importance | ✅ | {"memory_id":"1d5af397-ca4e-4ad1-9ca0-2b047fa05bbf","old_score":8,"new_score":10} |
+| mm_summarize | ✅ | {"summary":"用户：我们讨论一下周末去哪玩","memory_id":"eff0a448-50ec-40e9-b8bd-7192cfd15669","compressed_from":1,"saved_tokens":0,"via":"extractive"} |
+| mm_update_importance | ✅ | {"memory_id":"5f182982-0694-41bd-94f3-7e7f69ca49ee","old_score":8,"new_score":10} |
 | mm_delete | ✅ | {"deleted_count":1,"affected_sessions":["smoke-sess"],"freed_tokens":8} |
 | 倒排-删除后关键词不再命中 | ✅ | total=0 |
 | 倒排-索引与存储一致 | ✅ | inverted=2 store=2 |
@@ -26,13 +26,13 @@
 | REST stats | ✅ | {"total_memories":3,"short_term_tokens":11,"long_term_count":2,"storage_size_mb":0.17,"last_compacted":null,"embedding_model":"local","embedding_status":"degraded","needs_reindex":false,"decrypt_failed":0} |
 | REST list | ✅ | total=2 |
 | REST meta 会话/标签去重 | ✅ | sessions=1 tags=2 total=2 |
-| REST 分页 offset 生效 | ✅ | pg0=cbcaca6d-8334-4236-a2d6-08fb6e547610 pg1=612db8b4-fe04-46eb-a086-4136189cc2c7 total=2 |
+| REST 分页 offset 生效 | ✅ | pg0=eff0a448-50ec-40e9-b8bd-7192cfd15669 pg1=86553d39-dc7e-403e-8355-6535df7a40e9 total=2 |
 | REST 分页 tag 过滤(SQL) | ✅ | tag=摘要 total=1 expect=1 |
-| REST search offset 分页 | ✅ | total=1 top=612db8b4-fe04-46eb-a086-4136189cc2c7 vs (空) |
+| REST search offset 分页 | ✅ | total=1 top=86553d39-dc7e-403e-8355-6535df7a40e9 vs (空) |
 | REST search(cross-session global) | ✅ | top=我喜欢用 Python 做数据分析 score=0.8908 |
 | REST recent | ✅ | messages=1 |
 | REST config | ✅ | {"max_messages":20} |
 | REST export | ✅ | bytes=889 |
 | REST import | ✅ | {"imported":0,"skipped":2,"failed":0} |
 | REST cleanup | ✅ | {"expired":0,"evicted":0,"last_compacted":null} |
-| REST reindex | ✅ | {"processed":2,"model":"hash:512","needs_reindex":false,"latency_ms":5} |
+| REST reindex | ✅ | {"processed":2,"model":"hash:512","needs_reindex":false,"latency_ms":9} |

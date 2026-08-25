@@ -78,6 +78,28 @@ a { color: var(--accent); text-decoration: none; }
 .lvl-tab:hover { background: var(--panel-2); color: var(--text); }
 .lvl-tab.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; border-color: var(--accent-soft); }
 
+/* 分层视图（P3） */
+.lvl-ov-head { font-weight: 600; margin-bottom: 2px; }
+.lvl-view { min-height: 120px; }
+.alert.warn { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-soft); border-radius: 8px; padding: 12px 14px; }
+.scene-list { display: flex; flex-direction: column; gap: 8px; }
+.scene-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+.scene-card:hover { border-color: var(--accent); }
+.scene-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.scene-chev { color: var(--text-3); width: 12px; }
+.scene-path { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-summary { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+.scene-body { margin-top: 8px; }
+.scene-md { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; max-height: 46vh; overflow: auto; }
+.persona-md { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 13px; white-space: pre-wrap; word-break: break-word; max-height: 70vh; overflow: auto; }
+.conv-list { display: flex; flex-direction: column; gap: 8px; }
+.conv-line { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+.conv-line.u { border-left: 3px solid var(--accent); }
+.conv-line.a { border-left: 3px solid var(--text-3); }
+.conv-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.conv-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.toolbar .btn.active { background: var(--accent-soft); color: var(--accent); }
+
 /* 主区 */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar {

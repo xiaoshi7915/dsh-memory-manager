@@ -59,9 +59,17 @@ const state = {
   filters: { session: '', global: '', tag: '' },
   config: null,
   mode: 'browse', // 'browse'（记忆列表） | 'search'（语义检索结果，内嵌于同一面板）
-  tab: 'overview', // 层级 Tab：overview | l1 | l2 | l3 | l0（P1 骨架；L1-L0 真实数据后续接入）
+  tab: 'overview', // 层级 Tab：overview | l1 | l2 | l3 | l0（P1 骨架；P3 接真实分层数据）
   browser: { page: 0, pageSize: 50, total: 0 }, // 记忆浏览分页（0-based）
   search: { page: 0, pageSize: 5, total: 0 }, // 语义搜索分页（页大小 = Top-K）
+  lvl: { // 分层视图状态（P3）
+    seq: 0, // 竞态守卫：每次渲染自增，丢弃过期响应
+    l1: { page: 0, pageSize: 20, total: 0, type: '', family: '', scene: '' },
+    l0: { page: 0, pageSize: 20, total: 0, session: '' },
+    scenes: { family: '' },
+    sceneOpen: null, // 展开的场景 path
+    l3Fam: 'chat',
+  },
 }
 
 /* ---------------- 浏览/搜索 视图切换（同面板内嵌） ---------------- */
@@ -486,8 +494,7 @@ function initNav() {
   })
 }
 
-/** 层级 Tab 切换（概览 | L1 | L2 | L3 | L0）。P1 只做视图显隐骨架；
- *  L1-L0 真实分层数据在 P3 接入对应视图的渲染。 */
+/** 层级 Tab 切换（概览 | L1 | L2 | L3 | L0）。P3：切到分层即渲染对应真实数据视图。 */
 function initLvlTabs() {
   $$('.lvl-tab[data-lvl]').forEach((tab) => {
     const activate = () => {
@@ -498,14 +505,366 @@ function initLvlTabs() {
         t.setAttribute('aria-selected', on ? 'true' : 'false')
       })
       $$('.lvl-view').forEach((v) => { v.hidden = v.id !== `lvl-${state.tab}` })
-      // 切到概览回到浏览态（搜索结果仅属于概览层）
-      if (state.tab === 'overview' && state.mode === 'search') renderBrowser()
+      // 切到分层 → 渲染对应视图；切回概览 → 回浏览态
+      if (state.tab === 'overview') {
+        if (state.mode === 'search') renderBrowser()
+        loadLayeredOverview()
+      } else {
+        renderLayeredView(state.tab)
+      }
     }
     tab.addEventListener('click', activate)
     tab.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate() }
     })
   })
+}
+
+/* ---------------- 分层记忆视图（P3：只读直连 layered 真实数据） ---------------- */
+
+const L1_TYPE_LABELS = {
+  persona: '人格', episodic: '经历', instruction: '指令',
+  work_fact: '工作事实', work_task: '工作任务', work_method: '工作方法', work_artifact: '工作产物',
+}
+const L1_TYPE_ORDER = Object.keys(L1_TYPE_LABELS)
+
+function l1TypeLabel(t) { return L1_TYPE_LABELS[t] || t || '未知' }
+function famLabel(f) { return f === 'work' ? '工作' : f === 'chat' ? '对话' : f }
+
+/** 分层视图竞态守卫：调用方持有 seq，返回 (data)=>void 渲染器；过期则丢弃。 */
+function lvlRenderer() {
+  const seq = ++state.lvl.seq
+  return { seq, render: (data) => (seq === state.lvl.seq ? data : null) }
+}
+
+/** 分层不可用提示（fail-closed 时统一展示）。 */
+function layeredUnavailable(box, msg) {
+  box.innerHTML = `<div class="alert warn">layered 记忆数据不可用：${esc(msg || '')}（未安装 dsh-layered-memory 或其数据目录不存在）</div>`
+}
+
+/** 概览层的分层汇总卡（在 manager 统计条之上）。 */
+async function loadLayeredOverview() {
+  const box = $('#layered-overview')
+  if (!box) return
+  try {
+    const s = await api.layeredStats()
+    if (!s || s.present !== true) {
+      box.innerHTML = ''
+      return
+    }
+    const types = Object.entries(s.l1.types || {})
+      .sort((a, b) => L1_TYPE_ORDER.indexOf(a[0]) - L1_TYPE_ORDER.indexOf(b[0]) || b[1] - a[1])
+      .map(([t, n]) => `<span class="chip">${l1TypeLabel(t)} ${n}</span>`).join(' ')
+    const sessTop = (s.l0.bySession || []).slice(0, 3)
+      .map((x) => `<span class="chip">${esc(x.id.slice(0, 12))}… ${x.count}</span>`).join(' ')
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div class="lvl-ov-head">🧬 分层记忆（dsh-layered-memory）</div>
+        <div class="stat-strip" style="border:none;padding:8px 0 0">
+          <div class="stat"><div class="num">${s.l1.total}</div><div class="lbl">L1 原子记忆</div></div>
+          <div class="stat"><div class="num">${s.scenes.chat + s.scenes.work}</div><div class="lbl">L2 场景块</div></div>
+          <div class="stat"><div class="num">${s.persona.chat_chars + s.persona.work_chars}</div><div class="lbl">L3 画像字符</div></div>
+          <div class="stat"><div class="num">${s.l0.total}</div><div class="lbl">L0 消息</div></div>
+          <div class="stat"><div class="num">${esc(s.modes.default)}</div><div class="lbl">默认记忆模式</div></div>
+        </div>
+        ${types ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">L1 类型</span>${types}</div>` : ''}
+        ${sessTop ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">活跃会话</span>${sessTop}</div>` : ''}
+        <div class="hint" style="margin-top:8px">该层为只读视图（数据由 dsh-layered-memory 独占写）。编辑请在 layered 侧进行。</div>
+      </div>`
+  } catch (e) {
+    box.innerHTML = ''
+  }
+}
+
+/** 分层视图统一渲染入口。 */
+async function renderLayeredView(lvl) {
+  if (lvl === 'l1') return renderL1View()
+  if (lvl === 'l2') return renderL2View()
+  if (lvl === 'l3') return renderL3View()
+  if (lvl === 'l0') return renderL0View()
+}
+
+/** L1 原子记忆列表（类型/会话筛选 + 分页）。 */
+async function renderL1View() {
+  const box = $('#lvl-l1')
+  box.innerHTML = spinner('正在加载 L1 原子记忆…')
+  const { render } = lvlRenderer()
+  try {
+    const st = await api.layeredStats()
+    if (render() === null) return
+    if (st.present !== true) { layeredUnavailable(box, st.dataDir ? '' : '数据目录不可用'); return }
+    const s = state.lvl.l1
+    // 筛选工具条
+    const typeOpts = L1_TYPE_ORDER.map((t) => `<option value="${t}" ${s.type === t ? 'selected' : ''}>${l1TypeLabel(t)}</option>`).join('')
+    const famOpts = ['', 'chat', 'work'].map((f) => `<option value="${f}" ${s.family === f ? 'selected' : ''}>${f ? famLabel(f) : '全部族'}</option>`).join('')
+    box.innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px">
+        <select id="l1-type" style="min-width:130px"><option value="">全部类型</option>${typeOpts}</select>
+        <select id="l1-family" style="min-width:110px">${famOpts}</select>
+        <button class="btn ghost sm" id="l1-refresh">刷新</button>
+      </div>
+      <div id="l1-list"></div>
+      <div class="pager" id="l1-pager" hidden></div>`
+    $('#l1-type').onchange = (e) => { s.type = e.target.value; s.page = 0; renderL1View() }
+    $('#l1-family').onchange = (e) => { s.family = e.target.value; s.page = 0; renderL1View() }
+    $('#l1-refresh').onclick = () => { s.page = 0; renderL1View() }
+    return renderL1Page()
+  } catch (e) {
+    if (render() !== null) box.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+async function renderL1Page() {
+  const box = $('#lvl-l1')
+  const listBox = $('#l1-list')
+  const pager = $('#l1-pager')
+  if (!listBox) return
+  const { render } = lvlRenderer()
+  listBox.innerHTML = spinner('加载中…')
+  try {
+    const s = state.lvl.l1
+    const data = await api.layeredL1({
+      type: s.type || undefined, family: s.family || undefined,
+      offset: s.page * s.pageSize, limit: s.pageSize,
+    })
+    if (render() === null) return
+    s.total = data.total || 0
+    if (data.items.length === 0 && s.total > 0 && s.page > 0) { s.page -= 1; return renderL1Page() }
+    if (data.items.length === 0) {
+      listBox.innerHTML = emptyBox('L1 原子记忆为空', 'layered 尚未沉淀原子记忆')
+    } else {
+      listBox.innerHTML = `<div class="mem-list">${data.items.map((m) => l1Card(m)).join('')}</div>`
+      bindL1Cards(listBox)
+    }
+    renderPager(pager, {
+      page: s.page, pageSize: s.pageSize, total: s.total, sizes: [10, 20, 50],
+      onGo: (p) => { s.page = p; renderL1Page() },
+      onSize: (sz) => { s.pageSize = sz; s.page = 0; renderL1Page() },
+    })
+  } catch (e) {
+    if (render() !== null) listBox.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+function l1Card(m) {
+  const scene = m.scene_name ? `<span class="chip">🗂️ ${esc(m.scene_name)}</span>` : ''
+  return `
+  <div class="mem" data-id="${esc(m.id)}">
+    <div class="mem-top">
+      <div class="mem-content clamped">${esc(m.content)}</div>
+    </div>
+    <div class="mem-meta">
+      <span class="badge imp">${l1TypeLabel(m.type)}</span>
+      <span class="badge ${m.family === 'work' ? 'global' : 'session'}">${famLabel(m.family)}</span>
+      ${scene}
+      <span>重要度 ${m.priority}</span>
+      <span>v${m.version}</span>
+      <span>${m.updated_at ? fmtTime(m.updated_at) : ''}</span>
+    </div>
+    <div class="mem-detail">
+      <div class="d-row"><span>ID</span><code>${esc(m.id)}</code></div>
+      ${m.session_id ? `<div class="d-row"><span>会话</span><span>${esc(m.session_id)}</span></div>` : ''}
+      ${m.timestamp ? `<div class="d-row"><span>时间戳</span><span>${new Date(m.timestamp).toLocaleString()}</span></div>` : ''}
+    </div>
+  </div>`
+}
+
+function bindL1Cards(box) {
+  $$('.mem', box).forEach((el) => {
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('button')) return
+      el.classList.toggle('open')
+      el.querySelector('.mem-content').classList.toggle('clamped')
+    })
+  })
+}
+
+/** L2 场景块列表（卡片，点击展开正文）。 */
+async function renderL2View() {
+  const box = $('#lvl-l2')
+  box.innerHTML = spinner('正在加载 L2 场景…')
+  const { render } = lvlRenderer()
+  try {
+    const st = await api.layeredStats()
+    if (render() === null) return
+    if (st.present !== true) { layeredUnavailable(box, st.dataDir ? '' : '数据目录不可用'); return }
+    const data = await api.layeredScenes({ family: state.lvl.scenes.family || undefined })
+    if (render() === null) return
+    if (data.items.length === 0) {
+      box.innerHTML = emptyBox('L2 场景为空', 'layered 尚未生成场景块')
+      return
+    }
+    box.innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px">
+        <select id="l2-family" style="min-width:110px">
+          <option value="">全部族</option><option value="chat" ${state.lvl.scenes.family === 'chat' ? 'selected' : ''}>对话</option>
+          <option value="work" ${state.lvl.scenes.family === 'work' ? 'selected' : ''}>工作</option>
+        </select>
+        <button class="btn ghost sm" id="l2-refresh">刷新</button>
+      </div>
+      <div class="scene-list">
+        ${data.items.map((s) => sceneCard(s)).join('')}
+      </div>`
+    $('#l2-family').onchange = (e) => { state.lvl.scenes.family = e.target.value; renderL2View() }
+    $('#l2-refresh').onclick = () => renderL2View()
+    bindSceneCards(box)
+  } catch (e) {
+    if (render() !== null) box.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+function sceneCard(s) {
+  const open = state.lvl.sceneOpen === s.path
+  return `
+  <div class="scene-card" data-path="${esc(s.path)}">
+    <div class="scene-head">
+      <span class="scene-chev">${open ? '▾' : '▸'}</span>
+      <span class="scene-path">${esc(s.path)}</span>
+      ${s.heat ? `<span class="badge imp">🔥 ${s.heat}</span>` : ''}
+      <span class="hint">${s.updated ? fmtTime(s.updated) : ''}</span>
+    </div>
+    <div class="scene-summary">${esc(s.summary || '')}</div>
+    <div class="scene-body" ${open ? '' : 'hidden'}>
+      <pre class="scene-md">${esc(s.content ?? '')}</pre>
+    </div>
+  </div>`
+}
+
+function bindSceneCards(box) {
+  $$('.scene-card', box).forEach((el) => {
+    el.addEventListener('click', async (ev) => {
+      if (ev.target.closest('button')) return
+      const path = el.dataset.path
+      const body = el.querySelector('.scene-body')
+      const chev = el.querySelector('.scene-chev')
+      const isOpen = !body.hidden
+      // 关掉其他展开的场景
+      $$('.scene-card', box).forEach((x) => { x.querySelector('.scene-body').hidden = true; x.querySelector('.scene-chev').textContent = '▸' })
+      if (isOpen) {
+        state.lvl.sceneOpen = null
+        return
+      }
+      state.lvl.sceneOpen = path
+      chev.textContent = '▾'
+      if (!body.dataset.loaded) {
+        const [fam, ...rest] = path.split('/')
+        const name = rest.join('/').replace(/\.md$/, '')
+        try {
+          const sc = await api.layeredScene(fam, name)
+          body.querySelector('.scene-md').textContent = sc.content
+          body.dataset.loaded = '1'
+        } catch (e) {
+          body.querySelector('.scene-md').textContent = `加载失败：${e.message}`
+        }
+      }
+      body.hidden = false
+    })
+  })
+}
+
+/** L3 画像预览（两文件，切换族）。 */
+async function renderL3View() {
+  const box = $('#lvl-l3')
+  box.innerHTML = spinner('正在加载 L3 画像…')
+  const { render } = lvlRenderer()
+  try {
+    const st = await api.layeredStats()
+    if (render() === null) return
+    if (st.present !== true) { layeredUnavailable(box, st.dataDir ? '' : '数据目录不可用'); return }
+    return renderL3Persona()
+  } catch (e) {
+    if (render() !== null) box.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+async function renderL3Persona() {
+  const box = $('#lvl-l3')
+  const { render } = lvlRenderer()
+  try {
+    const fam = state.lvl.l3Fam
+    const data = await api.layeredPersona(fam)
+    if (render() === null) return
+    const other = fam === 'chat' ? 'work' : 'chat'
+    box.innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px">
+        <span class="hint">画像文件</span>
+        <button class="btn ghost sm ${fam === 'chat' ? 'active' : ''}" id="l3-chat">persona-chat.md</button>
+        <button class="btn ghost sm ${fam === 'work' ? 'active' : ''}" id="l3-work">persona-work.md</button>
+        <div class="grow"></div>
+        <span class="hint">${data.content.length} 字符</span>
+      </div>
+      <pre class="persona-md">${esc(data.content || '（空）')}</pre>`
+    $('#l3-chat').onclick = () => { state.lvl.l3Fam = 'chat'; renderL3Persona() }
+    $('#l3-work').onclick = () => { state.lvl.l3Fam = 'work'; renderL3Persona() }
+  } catch (e) {
+    if (render() !== null) box.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+/** L0 原始对话（会话选择 + 分页）。 */
+async function renderL0View() {
+  const box = $('#lvl-l0')
+  box.innerHTML = spinner('正在加载 L0 对话…')
+  const { render } = lvlRenderer()
+  try {
+    const st = await api.layeredStats()
+    if (render() === null) return
+    if (st.present !== true) { layeredUnavailable(box, st.dataDir ? '' : '数据目录不可用'); return }
+    const sessions = await api.layeredSessions()
+    if (render() === null) return
+    const s = state.lvl.l0
+    box.innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px">
+        <select id="l0-session" style="min-width:220px">
+          <option value="">全部会话</option>
+          ${sessions.items.map((x) => `<option value="${esc(x.id)}" ${s.session === x.id ? 'selected' : ''}>${esc(x.id.slice(0, 20))}… (${x.count})</option>`).join('')}
+        </select>
+        <button class="btn ghost sm" id="l0-refresh">刷新</button>
+      </div>
+      <div id="l0-list"></div>
+      <div class="pager" id="l0-pager" hidden></div>`
+    $('#l0-session').onchange = (e) => { s.session = e.target.value; s.page = 0; renderL0Page() }
+    $('#l0-refresh').onclick = () => { s.page = 0; renderL0Page() }
+    return renderL0Page()
+  } catch (e) {
+    if (render() !== null) box.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+async function renderL0Page() {
+  const listBox = $('#l0-list')
+  const pager = $('#l0-pager')
+  if (!listBox) return
+  const { render } = lvlRenderer()
+  listBox.innerHTML = spinner('加载中…')
+  try {
+    const s = state.lvl.l0
+    const data = await api.layeredL0({ session: s.session || undefined, offset: s.page * s.pageSize, limit: s.pageSize })
+    if (render() === null) return
+    s.total = data.total || 0
+    if (data.items.length === 0 && s.total > 0 && s.page > 0) { s.page -= 1; return renderL0Page() }
+    if (data.items.length === 0) {
+      listBox.innerHTML = emptyBox('L0 对话为空', '该会话尚无原始对话')
+    } else {
+      listBox.innerHTML = `<div class="conv-list">${data.items.map((m) => convLine(m)).join('')}</div>`
+    }
+    renderPager(pager, {
+      page: s.page, pageSize: s.pageSize, total: s.total, sizes: [10, 20, 50],
+      onGo: (p) => { s.page = p; renderL0Page() },
+      onSize: (sz) => { s.pageSize = sz; s.page = 0; renderL0Page() },
+    })
+  } catch (e) {
+    if (render() !== null) listBox.innerHTML = `<div class="alert err">加载失败：${esc(e.message)}</div>`
+  }
+}
+
+function convLine(m) {
+  const role = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : (m.role || '系统')
+  return `
+  <div class="conv-line ${m.role === 'user' ? 'u' : m.role === 'assistant' ? 'a' : ''}">
+    <div class="conv-meta"><span class="badge ${m.role === 'user' ? 'session' : 'global'}">${role}</span><span class="hint">${esc(m.recorded_at || '')}</span></div>
+    <div class="conv-text">${esc(m.content)}</div>
+  </div>`
 }
 
 /* ---------------- 导入导出模态 ---------------- */
@@ -611,6 +970,7 @@ async function init() {
   await loadConfig()
   await refreshFilters()
   renderBrowser()
+  loadLayeredOverview()
 }
 
 init()

@@ -85,6 +85,40 @@ export class MemoryApi {
   importBackup(text, mode = 'merge') { return this.post('/api/memory/import', { text, mode }) }
   cleanup() { return this.post('/api/memory/cleanup', {}) }
   reindex() { return this.post('/api/memory/reindex', {}) }
+
+  // ---- layered 分层记忆（只读直连 dsh-layered-memory 真实数据；P2/P3） ----
+  layeredStats() { return this.get('/api/memory/layered/stats') }
+  layeredL1(params = {}) {
+    const q = new URLSearchParams()
+    for (const k of ['type', 'family', 'scene', 'offset', 'limit']) if (params[k] !== undefined && params[k] !== '') q.set(k, params[k])
+    const s = q.toString()
+    return this.get(`/api/memory/layered/l1${s ? `?${s}` : ''}`)
+  }
+  layeredScenes(params = {}) {
+    const q = new URLSearchParams()
+    if (params.family) q.set('family', params.family)
+    const s = q.toString()
+    return this.get(`/api/memory/layered/scenes${s ? `?${s}` : ''}`)
+  }
+  layeredScene(family, name) { return this.get(`/api/memory/layered/scenes/${encodeURIComponent(family)}/${encodeURIComponent(name)}`) }
+  layeredPersona(family) { return this.get(`/api/memory/layered/persona?family=${encodeURIComponent(family)}`) }
+  layeredL0(params = {}) {
+    const q = new URLSearchParams()
+    for (const k of ['session', 'offset', 'limit']) if (params[k] !== undefined && params[k] !== '') q.set(k, params[k])
+    const s = q.toString()
+    return this.get(`/api/memory/layered/l0${s ? `?${s}` : ''}`)
+  }
+  layeredSessions() { return this.get('/api/memory/layered/sessions') }
+  layeredModeGet(session) { return this.get(`/api/memory/layered/mode${session ? `?session=${encodeURIComponent(session)}` : ''}`) }
+  layeredModeSet(session, mode) { return this.put('/api/memory/layered/mode', { session, mode }) }
+
+  put(path, body) {
+    return this._fetch(path, {
+      method: 'PUT',
+      headers: this.headers(true),
+      body: JSON.stringify(body ?? {}),
+    })
+  }
 }
 
 export const api = new MemoryApi()
