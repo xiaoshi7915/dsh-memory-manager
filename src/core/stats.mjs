@@ -44,5 +44,6 @@ export async function stats(engine) {
     embedding_model: engine.config.long_term.embedding_model,
     embedding_status: engine.embedding.status().kind === 'hash' ? 'degraded' : 'completed',
     needs_reindex: engine.needsReindex(),
+    decrypt_failed: engine._decryptFailed?.size ?? 0,
   }
 }

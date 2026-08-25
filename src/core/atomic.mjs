@@ -16,16 +16,16 @@ import path from 'node:path'
  * - 目录 fsync 仅非 win32 尝试（Windows 上目录句柄 sync 无意义且常失败）。
  * @param {string} dest 目标文件绝对路径
  * @param {string|Buffer} data 内容
- * @param {{fsync?: boolean, tmpSuffix?: string}} [opts]
+ * @param {{fsync?: boolean, mode?: number, tmpSuffix?: string}} [opts]
  */
-export async function writeFileAtomic(dest, data, { fsync = true, tmpSuffix = `.tmp-${process.pid}` } = {}) {
+export async function writeFileAtomic(dest, data, { fsync = true, mode, tmpSuffix = `.tmp-${process.pid}` } = {}) {
   const dir = path.dirname(dest)
   const base = path.basename(dest)
   const tmp = path.join(dir, `${base}${tmpSuffix}`)
   await fsp.mkdir(dir, { recursive: true })
   let fh
   try {
-    fh = await fsp.open(tmp, 'w')
+    fh = await fsp.open(tmp, 'w', mode)
     await fh.writeFile(data, 'utf8')
     if (fsync) await fh.sync()
   } catch (err) {

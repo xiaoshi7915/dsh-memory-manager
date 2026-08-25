@@ -30,6 +30,7 @@
     "integration": "node scripts/dsh-integration.mjs",
     "client": "node scripts/client-bundle-probe.mjs",
     "activate": "node scripts/profile-activate-probe.mjs",
+    "hardening": "node scripts/hardening-encryption-test.mjs",
     "serve": "node src/server/index.mjs",
     "preview": "node src/server/index.mjs"
   },

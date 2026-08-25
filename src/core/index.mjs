@@ -34,6 +34,7 @@ export class MemoryEngine {
     this.lastCompacted = null
     this._embeddingStatus = null
     this._plainCache = new Map() // id -> 解密后的明文（搜索热缓存）
+    this._decryptFailed = new Set() // 解密失败记录 id（密钥变更等；stats 上报，不再静默吞成乱码）
     this.inverted = new InvertedIndex() // 内存倒排索引（检索时若失步会自愈重建）
   }
 
@@ -127,7 +128,13 @@ export class MemoryEngine {
       this._plainCache.set(rec.id, dec)
       return dec
     } catch {
-      return rec.content
+      // 解密失败：不静默把密文当明文用（否则关键词/嵌入拿乱码当真、GUI 显乱码）。
+      // 显式标记 + 限频告警 + 计入 stats.decrypt_failed。
+      this._decryptFailed.add(rec.id)
+      if (this._decryptFailed.size <= 3) {
+        console.warn(`[dsh-memory-manager] 记忆 ${rec.id} 解密失败（密钥可能已变更，历史记忆不可读）`)
+      }
+      return '[解密失败：密钥可能已变更，历史记忆不可读]'
     }
   }
 
@@ -335,21 +342,18 @@ export class MemoryEngine {
     // 脱敏回显归一化：GUI/客户端把 GET config 里的 '***' 原样回传时，视为"未变更"
     if (patch?.storage?.master_password === '***') delete patch.storage.master_password
     if (patch?.long_term?.openai_api_key === '***') delete patch.long_term.openai_api_key
-    // 数据丢失保护：当前正以主密码（scrypt）加密且库里有记录时，禁止任何会改变派生密钥的操作——
-    // 清空主密码、关闭加密、或改成一个新密码都会导致：运行时仍用旧 key 写入，
-    // 重启后按新配置派生新 key → 历史密文全部不可读（decrypt 报错但被静默返回乱码）。
-    if (patch?.storage) {
-      const nextMaster = typeof patch.storage.master_password === 'string'
-        ? patch.storage.master_password
-        : this.config.storage.master_password
-      const nextEnabled = patch.storage.encryption_enabled !== undefined
-        ? patch.storage.encryption_enabled
-        : this.config.storage.encryption_enabled
-      const masterChanged = nextMaster !== this.config.storage.master_password
-      const scryptActive = this.crypto.active() && this.crypto.mode === 'scrypt'
-      const hasRecords = this.store.list().length > 0
-      if (scryptActive && hasRecords && (masterChanged || !nextEnabled || !nextMaster)) {
-        throw new MemoryError('CONFIG_ERROR', '当前以主密码加密且已有记忆数据，不能修改主密码/关闭加密（会丢失全部历史记忆）；请先导出明文备份再操作')
+    // 数据丢失保护：库里有记录时，禁止任何会改变「既有记忆可读性」的加密配置变更。
+    // 危险路径（原守卫只挡 scrypt 分支，random→主密码 / 开关双向均漏网）：
+    //   改主密码 / 清空主密码（scrypt↔random 切换、换新密码）→ 新写用新 key，历史密文全不可读；
+    //   关闭加密 → 旧密文被 decryptContent 原样返回 = 乱码；
+    //   开启加密 → 存量明文不重加密，decryptContent 把明文当密文解 = 乱码。
+    // 无重加密迁移能力前，一律 fail-closed 拒绝（空库时允许配置加密，不破坏任何数据）。
+    if (patch?.storage && this.store.count() > 0) {
+      const p = patch.storage
+      const passChanged = typeof p.master_password === 'string' && p.master_password !== this.config.storage.master_password
+      const enabledChanged = p.encryption_enabled !== undefined && p.encryption_enabled !== this.config.storage.encryption_enabled
+      if (passChanged || enabledChanged) {
+        throw new MemoryError('CONFIG_ERROR', '已有记忆数据时不能修改主密码或加密开关（会导致历史记忆不可读）；请先导出明文备份，或保持原值')
       }
     }
     this.config = await saveConfigImpl(this.baseDir, patch)

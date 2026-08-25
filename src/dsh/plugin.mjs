@@ -192,6 +192,7 @@ const TOOL_DEFS = [
       embedding_model: str('嵌入模型配置'),
       embedding_status: str('completed 或 degraded'),
       needs_reindex: bool('是否需要重建索引'),
+      decrypt_failed: int('解密失败条数（密钥可能已变更，历史记忆不可读）'),
     }),
     render(_args, v) {
       return text(`记忆库统计：总数 ${v.total_memories}（长期 ${v.long_term_count} / 短期 ${v.short_term_tokens} tokens），占用 ${v.storage_size_mb}MB，嵌入 ${v.embedding_status}${v.needs_reindex ? '（需重建索引）' : ''}`)

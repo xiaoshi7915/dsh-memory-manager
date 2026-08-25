@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
+import { writeFileAtomic } from './core/atomic.mjs'
 import { DEFAULT_CONFIG } from './core/types.mjs'
 
 const CONFIG_FILE = 'config.json'
@@ -87,7 +88,8 @@ export async function loadConfig(baseDir) {
   const config = mergeConfig(user)
   if (!fs.existsSync(file)) {
     await fsp.mkdir(baseDir, { recursive: true })
-    await fsp.writeFile(file, JSON.stringify(config, null, 2), 'utf8')
+    // config.json 含 api_token / 主密码，原子写 + 0600（避免半写损坏与弱权限暴露）
+    await writeFileAtomic(file, JSON.stringify(config, null, 2), { mode: 0o600 })
   }
   return config
 }
@@ -98,7 +100,7 @@ export async function saveConfig(baseDir, patch = {}) {
   const current = await loadConfig(baseDir)
   const merged = mergeConfig({ ...current, ...patch })
   await fsp.mkdir(baseDir, { recursive: true })
-  await fsp.writeFile(configPath(baseDir), JSON.stringify(merged, null, 2), 'utf8')
+  await writeFileAtomic(configPath(baseDir), JSON.stringify(merged, null, 2), { mode: 0o600 })
   return merged
 }
 

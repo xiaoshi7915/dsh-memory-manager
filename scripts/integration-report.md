@@ -1,7 +1,7 @@
 # dsh-memory-manager · DSH ctx.tools 集成验证报告
 
-- 生成时间：2026-08-25T19:27:13.966Z
-- 数据目录：`C:\Users\50251\AppData\Local\Temp\dsh-mem-verify-VNNnEn`
+- 生成时间：2026-08-25T20:33:01.010Z
+- 数据目录：`C:\Users\50251\AppData\Local\Temp\dsh-mem-verify-EyE4BJ`
 - 结论：**40/40 项通过**
 
 | 检查项 | 结果 | 说明 |
@@ -21,22 +21,22 @@
 | bare 别名 register memory_delete | ✅ | def={"name":"memory_delete"} |
 | bare 别名 register memory_update_importance | ✅ | def={"name":"memory_update_importance"} |
 | bare 别名 register memory_stats | ✅ | def={"name":"memory_stats"} |
-| execute mm_add 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"已保存记忆（id=5720f825-88ed-484f-b5a8-680cfc606551，嵌入=degraded，token=20）\n内容：我喜欢用 Python 做数据分析 |
+| execute mm_add 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"已保存记忆（id=a50ce30f-1020-4de0-aa67-0690656b8abd，嵌入=degraded，token=20）\n内容：我喜欢用 Python 做数据分析 |
 | mm_add value 有 memory_id | ✅ |  |
 | mm_add 渲染含中文 | ✅ |  |
 | execute mm_search 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"检索「我平时用什么语言做数据分析」共 1 条，耗时 3ms：\n1. [47.4%] 我喜欢用 Python 做数据分析，常用 pandas 和 matplotlib。"}]," |
-| mm_search 召回新增记忆 | ✅ | hit={"id":"5720f825-88ed-484f-b5a8-680cfc606551","content":"我喜欢用 Python 做数据分析，常用 pandas 和 matplotlib。","score":0.4743,"session_id":"sess-A", |
+| mm_search 召回新增记忆 | ✅ | hit={"id":"a50ce30f-1020-4de0-aa67-0690656b8abd","content":"我喜欢用 Python 做数据分析，常用 pandas 和 matplotlib。","score":0.4743,"session_id":"sess-A", |
 | bare 别名 memory_search 可执行 | ✅ | {"isError":false,"content":[{"type":"text","text":"检索「我平时用什么语言做数据分析」共 1 条，耗时 2ms：\n1. [47.4%] 我喜欢用 Python 做数据分析，常用 pandas 和 matplotlib。"}]," |
 | execute mm_get_recent 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"最近对话（2 条 / 30 tokens）：\n用户：帮我看看这个数据集的缺失值怎么处理\n助手：可以用 dropna 或 fillna 处理缺失值"}],"value":{"m |
 | 会话事件钩子写入短期记忆 | ✅ |  |
-| execute mm_summarize 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"对话摘要：用户偏好使用 Python 做数据分析，工具链为 pandas 与 matplotlib。\n（已存为长期记忆 id=c7527713-4e9c-47fc-b8c9-9 |
+| execute mm_summarize 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"对话摘要：用户偏好使用 Python 做数据分析，工具链为 pandas 与 matplotlib。\n（已存为长期记忆 id=69f364e0-a8c2-4366-b9ac-d |
 | mm_summarize 经 LLM 生成 | ✅ | summary="用户偏好使用 Python 做数据分析，工具链为 pandas 与 matplotlib。" |
 | mm_delete 空目标被守卫拦截 | ✅ | {"isError":true,"error":{"message":"缺少删除目标：请提供 ids 或 conditions"},"content":[{"type":"text","text":"Error: 缺少删除目标：请提供 ids 或 conditions"}]} |
 | execute mm_delete 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"已删除 2 条记忆（会话：sess-A，释放 48 tokens）"}],"value":{"deleted_count":2,"affected_sessions":["ses |
 | mm_delete 清理指定记忆 | ✅ | deleted={"deleted_count":2,"affected_sessions":["sess-A"],"freed_tokens":48} |
 | execute mm_stats 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"记忆库统计：总数 2（长期 0 / 短期 30 tokens），占用 0.16MB，嵌入 degraded"}],"value":{"total_memories":2,"sho |
 | mm_stats 字段完整 | ✅ |  |
-| execute mm_update_importance 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"已更新记忆 636c86e0-3397-4efa-8c40-e5d63e508120 的重要性：5 → 9"}],"value":{"memory_id":"636c86e0-3 |
+| execute mm_update_importance 成功 | ✅ | {"isError":false,"content":[{"type":"text","text":"已更新记忆 3b561e10-9ab4-4f4e-929d-0d6ed35002d7 的重要性：5 → 9"}],"value":{"memory_id":"3b561e10-9 |
 | mm_update_importance 更新生效 | ✅ |  |
 | webServer 注册 /api/memory 前缀路由 | ✅ |  |
 | webServer 注册 /memory-manager GUI 托管路由 | ✅ |  |
