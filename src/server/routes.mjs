@@ -128,8 +128,8 @@ async function handle(req, res, getEngine) {
   const p = url.pathname
   const method = req.method
 
-  // 静态 GUI
-  if (method === 'GET' && (p === '/' || p.startsWith('/gui/') || p === '/index.html')) {
+  // 静态 GUI：/（index.html）、/gui/*（显式前缀）、以及页面相对路径引用的 /js/*、/css/*
+  if (method === 'GET' && (p === '/' || p.startsWith('/gui/') || p === '/index.html' || p.startsWith('/js/') || p.startsWith('/css/'))) {
     serveStatic(res, p)
     return
   }

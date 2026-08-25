@@ -6,3 +6,5 @@ Thumbs.db
 # 本地记忆数据（测试生成）
 .tmp-memory/
 test-data/
+# GUI 验证 fixture（抓取的真实 API 响应 + 生成的截图/HTML）
+.tmp-gui-fixture/
