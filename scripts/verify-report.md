@@ -1,19 +1,19 @@
 # dsh-memory-manager 验收报告
 
-- 数据目录：`C:\Users\50251\Desktop\UAP\模型能力调研\dsh-memory-manager\test-data\verify-1787685235651`
+- 数据目录：`C:\Users\50251\Desktop\UAP\模型能力调研\dsh-memory-manager\test-data\verify-1787686034306`
 - 嵌入模型：`hash`（未配置真实模型时降级为哈希+关键词混合）
-- 生成时间：2026-08-25T19:14:08.951Z
+- 生成时间：2026-08-25T19:27:24.654Z
 - 结论：**7/7 项通过**
 
 ## 验收结果
 
 | # | 验收项 | 结果 | 说明 | 实测 |
 |---|--------|------|------|------|
-| 验收2-1 跨会话偏好检索 | ✅ 通过 | 新会话 sess-B 检索，期望记忆 id=0be2fba0-7e54-4efb-b5c5-ad39c33e697c 且 score>0.85 | `{"top_id":"0be2fba0-7e54-4efb-b5c5-ad39c33e697c","top_content":"我喜欢用 Python 做数据分析","score":0.8908,"total":1,"latency_ms":5}` |
+| 验收2-1 跨会话偏好检索 | ✅ 通过 | 新会话 sess-B 检索，期望记忆 id=955d2641-2e60-4fbf-8ec3-76dd79da53d8 且 score>0.85 | `{"top_id":"955d2641-2e60-4fbf-8ec3-76dd79da53d8","top_content":"我喜欢用 Python 做数据分析","score":0.8908,"total":1,"latency_ms":5}` |
 | 验收2-2 会话隔离 | ✅ 通过 | sess-A 的非全局记忆不应出现在 sess-B 检索结果 | `{"results":0,"leaked":false}` |
 | 验收1 20轮后引用第3轮信息 | ✅ 通过 | 第 3 轮关键信息可被短期窗口与长期检索同时命中 | `{"recent_window":20,"in_recent":true,"ref_found":true}` |
-| 验收1-2 注入延迟 | ✅ 通过 | 隐式注入（getRecent + search）延迟 <100ms | `{"injection_latency_ms":29}` |
-| 验收3-1 Top-5 平均延迟 | ✅ 通过 | 20 个查询平均延迟 <300ms（峰值 <500ms） | `{"avg_ms":138.3,"max_ms":256,"seed_ms":10285}` |
+| 验收1-2 注入延迟 | ✅ 通过 | 隐式注入（getRecent + search）延迟 <100ms | `{"injection_latency_ms":44}` |
+| 验收3-1 Top-5 平均延迟 | ✅ 通过 | 20 个查询平均延迟 <300ms（峰值 <500ms） | `{"avg_ms":116.7,"max_ms":218,"seed_ms":7878}` |
 | 验收3-2 Top-1 直接相关率 | ✅ 通过 | Top-1 直接相关率 >=90% | `{"top1_rate":0.9,"top1_hits":18,"top5_rate":1,"n":20}` |
 | 验收3-3 记忆规模 | ✅ 通过 | 长期记忆条数 >=2000 | `{"count":2000}` |
 

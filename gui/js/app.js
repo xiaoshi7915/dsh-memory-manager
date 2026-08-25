@@ -26,11 +26,6 @@ function toast(msg) {
   el._t = setTimeout(() => el.classList.remove('show'), 2400)
 }
 
-function setStatus(on, label) {
-  $('#status-dot').className = 'status-dot ' + (on ? 'on' : 'off')
-  $('#status-label').textContent = label
-}
-
 /** 按钮忙碌/禁用态（异步操作期间防重复点击）。 */
 function busy(btn, on) {
   if (!btn) return
@@ -471,17 +466,14 @@ async function saveConfig() {
 }
 
 /* ---------------- 初始化 ---------------- */
-const PANEL_TITLES = { browser: '记忆浏览', settings: '记忆设置' }
-
 function initNav() {
-  $$('.sidebar .nav').forEach((nav) => {
+  $$('.breadcrumb .crumb[data-panel]').forEach((nav) => {
     const activate = () => {
-      $$('.sidebar .nav').forEach((n) => n.classList.remove('active'))
+      $$('.breadcrumb .crumb[data-panel]').forEach((n) => n.classList.remove('active'))
       nav.classList.add('active')
       const target = nav.dataset.panel
       $$('.panel').forEach((p) => p.classList.remove('active'))
       $(`#panel-${target}`).classList.add('active')
-      if (PANEL_TITLES[target]) $('#page-title').textContent = PANEL_TITLES[target]
       if (target === 'browser') { if (state.mode === 'browse') renderBrowser() }
       if (target === 'settings') loadConfig()
     }
@@ -586,12 +578,11 @@ async function init() {
   initEvents()
   setupImport()
   initTransferModal()
-  // 状态
+  // 服务健康检查（离线时 toast 由各 API 调用报错提示）
   try {
     await api.healthz()
-    setStatus(true, '服务在线')
   } catch {
-    setStatus(false, '服务离线')
+    /* 服务离线：操作时 toast 会提示错误 */
   }
   await loadConfig()
   await refreshFilters()

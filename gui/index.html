@@ -8,21 +8,16 @@
 </head>
 <body>
   <div class="app">
-    <!-- 侧边栏（两项：记忆浏览 / 记忆设置） -->
-    <aside class="sidebar">
-      <div class="brand"><span class="emoji">🧠</span>记忆管理</div>
-      <div class="nav active" data-panel="browser" role="button" tabindex="0" aria-label="记忆浏览"><span class="icon">🕘</span>记忆浏览</div>
-      <div class="nav" data-panel="settings" role="button" tabindex="0" aria-label="记忆设置"><span class="icon">⚙️</span>记忆设置</div>
-      <div class="foot">
-        <span id="status-dot" class="status-dot off"></span><span id="status-label">连接中…</span><br/>
-        <span class="hint">dsh-memory-manager v1.0.0</span>
-      </div>
-    </aside>
-
     <!-- 主区 -->
     <main class="main">
       <header class="topbar">
-        <h1 id="page-title">记忆浏览</h1>
+        <nav class="breadcrumb" aria-label="面包屑导航">
+          <span class="crumb root">🧠 记忆管理</span>
+          <span class="crumb-sep">›</span>
+          <span class="crumb active" data-panel="browser" role="button" tabindex="0" aria-label="记忆浏览">记忆浏览</span>
+          <span class="crumb-sep">›</span>
+          <span class="crumb" data-panel="settings" role="button" tabindex="0" aria-label="记忆设置">记忆设置</span>
+        </nav>
         <div class="spacer"></div>
         <button class="btn ghost sm" id="theme-btn">🌓 主题</button>
       </header>
