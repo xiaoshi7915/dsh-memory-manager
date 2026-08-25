@@ -8,7 +8,8 @@
     ".": "./src/dsh/plugin.mjs",
     "./engine": "./src/core/index.mjs",
     "./handlers": "./src/tools/handlers.mjs",
-    "./config": "./src/config.mjs"
+    "./config": "./src/config.mjs",
+    "./client": "./src/client/bundle.js"
   },
   "files": [
     "src",
@@ -26,6 +27,7 @@
     "verify": "node scripts/verify.mjs",
     "smoke": "node scripts/smoke.mjs",
     "integration": "node scripts/dsh-integration.mjs",
+    "client": "node scripts/client-bundle-probe.mjs",
     "serve": "node src/server/index.mjs",
     "preview": "node src/server/index.mjs"
   },
@@ -52,6 +54,12 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
     }
   },
   "peerDependencies": {

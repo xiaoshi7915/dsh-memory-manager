@@ -18,7 +18,7 @@
 | 🔒 会话隔离 | 默认仅本会话可见；`is_global` 记忆跨会话共享，可整体开关 |
 | 🔐 安全 | 默认 AES-256-GCM 加密存储（主密码 scrypt 派生密钥） |
 | ⇅ 导入导出 | JSON / JSONL 备份，合并 / 替换两种恢复模式 |
-| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置 四面板，深浅双主题；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K） |
+| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置 四面板，深浅双主题；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI） |
 
 ---
 
@@ -30,11 +30,12 @@ dsh-memory-manager/
 │   ├── core/            # 核心引擎（类型/分词/短期/嵌入/向量/加密/存储/检索/摘要/生命周期/导入导出/统计/门面）
 │   ├── tools/           # 7 个 Agent 工具（handlers.mjs + 定义）
 │   ├── triggers/        # 触发词规则
+│   ├── client/          # 浏览器 half（bundle.js：注入设置侧边栏「记忆管理」，iframe 内嵌 GUI）
 │   ├── dsh/plugin.mjs   # DSH 插件适配层（name/inject/apply）
 │   └── server/          # 共享 REST 路由 + 独立服务器入口
 ├── gui/                 # Web 界面（index.html 真实模式 / preview.html 独立预览 / css / js）
 ├── contracts/           # 工具契约（tools.md）与 Web API 契约（web-api.md）
-├── scripts/             # seed-2000 / verify / smoke（含 md 报告）
+├── scripts/             # seed-2000 / verify / smoke / client（客户端契约探针，含 md 报告）
 ├── review/              # UI 视觉验收
 ├── TASK-spec.md         # 需求规格
 ├── ARCHITECTURE.md      # 架构设计
@@ -80,6 +81,7 @@ npm run serve          # 默认 http://127.0.0.1:4599，PORT 可覆盖
 - 通过 `ctx.on('session/event')` 监听会话事件：写入短期记忆、超阈值自动摘要
 - 通过 `ctx.get('llm')` 接入真实 LLM 生成式摘要（`ctx.llm.stream` + `BlockAssembler`），失败自动回退本地抽取式
 - **P2 事件协调**（与 dsh-layered-memory 共存）：`config.hooks.sessionEventSummarize = auto|on|off`，默认 `auto` —— 启动探测 layered（cordis 注册表含 `dsh-memory`/layered，或裸工具 `memory_search` 已被注册且本插件未开 bareSearch），在场即让位（不短期捕获、不自动摘要），避免双写/重复摘要；`on` 强制接管，`off` 只关自动摘要（保留短期捕获）
+- **浏览器 half**（`dsh.client`）：手写 plain-JS bundle 注入 `settings.section` 槽位，设置侧边栏出现「记忆管理」入口，iframe 内嵌 `src/client/bundle.js`（无打包器、无 RPC，纯 HTTP 走 `/api/memory/*`）
 
 **装载与验证**（在 DSH workspace 内）：本项目 `node_modules/@deepseek-ai/{cordis,dsh-tools,dsh-llm}` 为指向 DSH checkout 真实包目录的 junction，使插件可用 DSH 的包树裸导入加载。
 
