@@ -23,8 +23,18 @@
       </header>
 
       <div class="content">
-        <!-- 记忆浏览（含内嵌语义搜索 + 导入导出入口） -->
+        <!-- 记忆浏览（含内嵌语义搜索 + 导入导出入口 + 分层 Tab） -->
         <section class="panel active" id="panel-browser">
+          <!-- 层级 Tab（P1 骨架；L1/L2/L3/L0 真实分层数据在后续阶段接入） -->
+          <div class="lvl-tabs" id="lvl-tabs" role="tablist" aria-label="记忆层级">
+            <span class="lvl-tab active" data-lvl="overview" role="tab" tabindex="0" aria-selected="true">概览</span>
+            <span class="lvl-tab" data-lvl="l1" role="tab" tabindex="0" aria-selected="false">L1 原子记忆</span>
+            <span class="lvl-tab" data-lvl="l2" role="tab" tabindex="0" aria-selected="false">L2 场景</span>
+            <span class="lvl-tab" data-lvl="l3" role="tab" tabindex="0" aria-selected="false">L3 画像</span>
+            <span class="lvl-tab" data-lvl="l0" role="tab" tabindex="0" aria-selected="false">L0 对话</span>
+          </div>
+          <div class="lvl-views">
+          <div class="lvl-view" id="lvl-overview">
           <div class="stat-strip">
             <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
             <div class="stat"><div class="num" id="st-st">-</div><div class="lbl">短期 tokens</div></div>
@@ -73,6 +83,22 @@
           <!-- 语义搜索结果（搜索模式，内嵌于同一面板） -->
           <div id="search-results" hidden></div>
           <div class="pager" id="search-pager" hidden></div>
+          </div><!-- /#lvl-overview -->
+
+          <!-- 分层视图（P3 接入真实 layered 数据；P1 占位） -->
+          <div class="lvl-view" id="lvl-l1" hidden>
+            <div class="empty"><div class="big">🧬</div><div style="font-weight:600">L1 原子记忆</div><div class="hint">真实分层数据在后续阶段接入（只读浏览 layered 的 L1 原子记忆）</div></div>
+          </div>
+          <div class="lvl-view" id="lvl-l2" hidden>
+            <div class="empty"><div class="big">🗂️</div><div style="font-weight:600">L2 场景块</div><div class="hint">真实分层数据在后续阶段接入（场景 .md 卡片）</div></div>
+          </div>
+          <div class="lvl-view" id="lvl-l3" hidden>
+            <div class="empty"><div class="big">🎭</div><div style="font-weight:600">L3 画像</div><div class="hint">真实分层数据在后续阶段接入（persona-chat / persona-work）</div></div>
+          </div>
+          <div class="lvl-view" id="lvl-l0" hidden>
+            <div class="empty"><div class="big">💬</div><div style="font-weight:600">L0 原始对话</div><div class="hint">真实分层数据在后续阶段接入（按会话浏览）</div></div>
+          </div>
+          </div><!-- /.lvl-views -->
         </section>
 
         <!-- 记忆设置 -->

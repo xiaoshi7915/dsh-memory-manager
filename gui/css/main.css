@@ -57,16 +57,26 @@ body {
 a { color: var(--accent); text-decoration: none; }
 .app { display: flex; height: 100vh; }
 
-/* 面包屑导航（原侧边栏入口改到顶部） */
-.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+/* 面包屑导航（原侧边栏入口改到顶部；紧凑 4px/13px，路径感） */
+.breadcrumb { display: flex; align-items: center; gap: 4px; font-size: 13px; }
 .breadcrumb .crumb {
-  padding: 5px 10px; border-radius: 7px; cursor: pointer;
+  padding: 4px 8px; border-radius: 6px; cursor: pointer;
   color: var(--text-2); user-select: none;
 }
 .breadcrumb .crumb:hover { background: var(--panel-2); color: var(--text); }
 .breadcrumb .crumb.active { color: var(--accent); font-weight: 650; cursor: default; background: var(--accent-soft); }
-.breadcrumb .crumb.root { color: var(--text); font-weight: 700; cursor: default; background: none; }
-.breadcrumb .crumb-sep { color: var(--text-3); }
+.breadcrumb .crumb.root { color: var(--text-2); font-weight: 500; cursor: default; background: none; }
+.breadcrumb .crumb-sep { color: var(--text-3); font-size: 12px; }
+
+/* 层级 Tab 条（记忆浏览面板内的 L0–L3 切换，独立分段控件，区别于面包屑轨迹） */
+.lvl-tabs { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; flex-wrap: wrap; }
+.lvl-tab {
+  padding: 6px 14px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; color: var(--text-2); user-select: none;
+  border: 1px solid transparent;
+}
+.lvl-tab:hover { background: var(--panel-2); color: var(--text); }
+.lvl-tab.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; border-color: var(--accent-soft); }
 
 /* 主区 */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }

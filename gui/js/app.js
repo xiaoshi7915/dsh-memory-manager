@@ -59,6 +59,7 @@ const state = {
   filters: { session: '', global: '', tag: '' },
   config: null,
   mode: 'browse', // 'browse'（记忆列表） | 'search'（语义检索结果，内嵌于同一面板）
+  tab: 'overview', // 层级 Tab：overview | l1 | l2 | l3 | l0（P1 骨架；L1-L0 真实数据后续接入）
   browser: { page: 0, pageSize: 50, total: 0 }, // 记忆浏览分页（0-based）
   search: { page: 0, pageSize: 5, total: 0 }, // 语义搜索分页（页大小 = Top-K）
 }
@@ -485,6 +486,28 @@ function initNav() {
   })
 }
 
+/** 层级 Tab 切换（概览 | L1 | L2 | L3 | L0）。P1 只做视图显隐骨架；
+ *  L1-L0 真实分层数据在 P3 接入对应视图的渲染。 */
+function initLvlTabs() {
+  $$('.lvl-tab[data-lvl]').forEach((tab) => {
+    const activate = () => {
+      state.tab = tab.dataset.lvl
+      $$('.lvl-tab[data-lvl]').forEach((t) => {
+        const on = t === tab
+        t.classList.toggle('active', on)
+        t.setAttribute('aria-selected', on ? 'true' : 'false')
+      })
+      $$('.lvl-view').forEach((v) => { v.hidden = v.id !== `lvl-${state.tab}` })
+      // 切到概览回到浏览态（搜索结果仅属于概览层）
+      if (state.tab === 'overview' && state.mode === 'search') renderBrowser()
+    }
+    tab.addEventListener('click', activate)
+    tab.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate() }
+    })
+  })
+}
+
 /* ---------------- 导入导出模态 ---------------- */
 function openTransfer() { $('#transfer-modal').hidden = false }
 function closeTransfer() { $('#transfer-modal').hidden = true }
@@ -575,6 +598,7 @@ async function init() {
   applyTheme()
   mq?.addEventListener?.('change', applyTheme)
   initNav()
+  initLvlTabs()
   initEvents()
   setupImport()
   initTransferModal()
