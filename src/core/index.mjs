@@ -171,6 +171,20 @@ export class MemoryEngine {
     }
   }
 
+  /** 🔴2 防抖批量落盘：批量写（导入/灌入）时合并多次 save 为一次全量写，
+   *  避免「每条 addMemory 全量 JSON 覆写」退化成 O(N²)。
+   *  调用后最多 DEBOUNCE_MS 落盘一次；close() 兜底做最终刷盘。
+   *  @param {number} [debounceMs] */
+  persistVectorsDebounced(debounceMs = 800) {
+    if (!this.vector.dirty) return
+    if (this._vecFlushTimer) return // 已有排程
+    this._vecFlushTimer = setTimeout(async () => {
+      this._vecFlushTimer = null
+      try { await this.persistVectors() } catch { /* 忽略 */ }
+    }, debounceMs)
+    this._vecFlushTimer.unref?.()
+  }
+
   /**
    * 重建向量索引（更换嵌入模型后调用）：按当前提供者对全库重嵌入并覆写向量索引。
    * 内容加密不影响重嵌入（用解密明文）。成功后清 needs_reindex。
@@ -237,7 +251,8 @@ export class MemoryEngine {
     })
     this.vector.upsert(id, vec)
     this.inverted.add(id, tokenizeTerms(content))
-    await this.persistVectors()
+    // 🔴2 防抖批量落盘：单条写入不立即全量 JSON 覆写向量索引，合并到批量刷盘
+    this.persistVectorsDebounced()
     // 顺带跑生命周期
     try {
       this.lifecycle.expire()
@@ -373,6 +388,11 @@ export class MemoryEngine {
   }
 
   async close() {
+    // 🔴2 关闭兜底：取消防抖计时器并做最终向量刷盘，保证防抖期间的脏数据不丢
+    if (this._vecFlushTimer) {
+      clearTimeout(this._vecFlushTimer)
+      this._vecFlushTimer = null
+    }
     try { await this.persistVectors() } catch { /* 忽略 */ }
     try { this.store.close() } catch { /* 忽略 */ }
     this.releaseDirLock()

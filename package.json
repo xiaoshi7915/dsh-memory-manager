@@ -31,6 +31,7 @@
     "client": "node scripts/client-bundle-probe.mjs",
     "activate": "node scripts/profile-activate-probe.mjs",
     "hardening": "node scripts/hardening-encryption-test.mjs",
+    "hardening:2to8": "node scripts/hardening-2to8-test.mjs",
     "layered": "node scripts/layered-endpoints-test.mjs",
     "gui:layered": "node scripts/gui-layered-logic-test.mjs",
     "observability": "node scripts/agent-observability-test.mjs",

@@ -65,8 +65,10 @@ export async function search(engine, query, opts = {}) {
   let threshold = opts.threshold ?? engine.config.long_term.similarity_threshold ?? 0.75
   if (degraded) threshold = Math.max(0.38, threshold * 0.5)
 
-  // 向量候选（P3：召回池封顶 100，替代旧的"topK*8 无上限"；offset 分页时至少覆盖当前页）
-  const pool = Math.min(100, Math.max(topK * 8, 64, offset + topK))
+  // 向量候选（P3 召回池下限 64；🔴6 取消 100 硬封顶——否则 offset>95 深翻页必翻空。
+  // 改为覆盖当前页的「下限」，候选池随 offset 线性增长，保证任意 offset 都能取到结果；
+  // 代价是深翻页召回量增大，但语义检索本就是 topK 排序，极少深翻，正确性优先。）
+  const pool = Math.max(topK * 8, 64, offset + topK)
   let vecMap = new Map()
   if (!needsReindex) {
     const vectorHits = engine.vector.search(queryVec, pool)

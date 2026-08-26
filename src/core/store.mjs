@@ -15,9 +15,23 @@ export class MemoryStore {
     this.db = null
   }
 
+  /** 🔴4 schema 版本化迁移：PRAGMA user_version 驱动，逐版升级。
+   *  v0 → v1：初始 memories 表。
+   *  （未来加列/改列在此追加 v2/v3…，每版一个幂等迁移块，确保旧库平滑升级。） */
   migrate() {
     if (!this.db) return
-    this.db.exec(MEMORY_TABLE_SQL)
+    const v = this.schemaVersion()
+    if (v < 1) {
+      this.db.exec(MEMORY_TABLE_SQL)
+      this.db.exec('PRAGMA user_version = 1')
+    }
+  }
+
+  /** 当前 schema 版本。 */
+  schemaVersion() {
+    if (!this.db) return 0
+    const row = this.db.prepare('PRAGMA user_version').get()
+    return Number(row?.user_version ?? 0)
   }
 
   open() {

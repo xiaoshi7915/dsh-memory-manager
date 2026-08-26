@@ -4,6 +4,7 @@
  */
 
 import { newId, nowMs, clampImportance } from './types.mjs'
+import { countTokens, tokenizeTerms } from './tokenizer.mjs'
 
 /** 导出备份文本。 */
 export async function exportBackup(engine, { format = 'json' } = {}) {
@@ -68,9 +69,13 @@ export async function importBackup(engine, text, { mode = 'merge' } = {}) {
         skipped += 1
         continue
       }
+      // 🔴3 元数据保真：created_at/summary_of/ttl/source/tokens 全部按备份还原。
+      // 不走 addMemory（其内部覆盖 created_at 且不认 summary_of 键），改为
+      // 「直接 store.insert + 嵌入 + 索引」四步，与 addMemory 写入语义完全等价。
+      const content = String(raw.content)
       const rec = {
         id,
-        content: raw.content,
+        content,
         tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
         importance: clampImportance(raw.importance ?? 5),
         is_global: raw.is_global === true || raw.is_global === 1,
@@ -79,15 +84,34 @@ export async function importBackup(engine, text, { mode = 'merge' } = {}) {
         last_accessed_at: Number(raw.last_accessed_at) || nowMs(),
         ttl: raw.ttl === undefined || raw.ttl === null ? null : Number(raw.ttl),
         source: typeof raw.source === 'string' ? raw.source : 'import',
-        tokens: Number(raw.tokens) || 0,
-        summary_of: typeof raw.summary_of === 'string' ? raw.summary_of : null,
+        tokens: Number(raw.tokens) || countTokens(content),
+        summary_of: typeof raw.summary_of === 'string' && raw.summary_of ? raw.summary_of : null,
       }
-      await engine.addMemory({ ...rec, sessionId: rec.session_id })
+      // 与 addMemory 一致：先嵌入再入库（嵌入失败不留孤儿行）；加密内容按当前密钥写
+      const vec = await engine.embedding.embed(content)
+      engine.store.insert({
+        id: rec.id,
+        content: engine.crypto.active() ? engine.crypto.encrypt(content) : content,
+        tags: rec.tags,
+        importance: rec.importance,
+        is_global: rec.is_global,
+        session_id: rec.session_id,
+        created_at: rec.created_at,
+        last_accessed_at: rec.last_accessed_at,
+        ttl: rec.ttl,
+        source: rec.source,
+        tokens: rec.tokens,
+        summary_of: rec.summary_of,
+      })
+      engine.vector.upsert(rec.id, vec)
+      engine.inverted.add(rec.id, tokenizeTerms(content))
       existing.add(id)
       imported += 1
     } catch {
       failed += 1
     }
   }
+  // 🔴2 批量导入末尾统一刷盘一次（替代逐条全量 JSON 覆写，避免 O(N²)）
+  try { await engine.persistVectors() } catch { /* 忽略 */ }
   return { imported, skipped, failed }
 }

@@ -448,8 +448,25 @@ export function apply(ctx, config = {}) {
   // 串行链处理，避免并发投递（ctx.parallel）下检查-摘要-更新出现竞态导致重复摘要。
   const lastSummarizedCount = new Map() // sessionId -> 上次摘要时的消息条数
   const sessionChains = new Map() // sessionId -> Promise（串行化链尾）
+  // 🔴8 Map 有界清理：会话链/节流条数超 512 后逐出最老一半（Map 迭代即插入序），
+  // 避免长驻进程里会话无限累积（每个会话一条链 + 一个计数，永不清理 = 内存泄漏）。
+  const pruneSessionMaps = () => {
+    const CAP = 512
+    if (sessionChains.size <= CAP && lastSummarizedCount.size <= CAP) return
+    const keys = new Set([...sessionChains.keys(), ...lastSummarizedCount.keys()])
+    if (keys.size <= CAP) return
+    let drop = 0
+    const excess = keys.size - CAP
+    for (const k of keys) {
+      if (drop >= excess) break
+      sessionChains.delete(k)
+      lastSummarizedCount.delete(k)
+      drop += 1
+    }
+  }
   ctx.on('session/event', (session, event) => {
     const sid = session?.id || 'default'
+    pruneSessionMaps()
     const prevChain = sessionChains.get(sid) ?? Promise.resolve()
     const nextChain = prevChain.then(() => handleSessionEvent(sid, event))
     // map 存已捕获版本：避免某次处理 reject 后链尾变 rejected，永久毒化该会话后续事件

@@ -60,6 +60,8 @@ export class EmbeddingProvider {
 
   /** 探测可用模型。 */
   async init() {
+    // 🔴5 降级自愈：init 重置陈旧降级标志（配置/网络恢复后不再永久卡在降级态）
+    this._degraded = false
     if (this.model === 'openai' && this.apiKey) {
       this.kind = 'openai'
       this.dim = 1536
@@ -117,6 +119,11 @@ export class EmbeddingProvider {
     } else if (this.kind === 'openai') {
       try {
         vec = await this._embedOpenai(String(text))
+        // 🔴5 降级自愈：外部 API 恢复后清除降级标志（不再永久停在降级态）
+        if (this._degraded) {
+          this._degraded = false
+          console.warn('[dsh-memory-manager] OpenAI 嵌入恢复，已退出降级哈希嵌入')
+        }
       } catch (e) {
         // 嵌入 API 失败（超时/限流/断网）：降级本地哈希嵌入，保证写入/检索不中断
         if (!this._degraded) {

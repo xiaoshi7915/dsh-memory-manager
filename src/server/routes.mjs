@@ -150,6 +150,21 @@ async function handle(req, res, getEngine) {
     }
   }
 
+  // 🔴8 CSRF 防护：状态变更方法（POST/DELETE/PATCH/PUT）要求同源。
+  // 同源 iframe（DSH 设置页内嵌 /memory-manager）与 curl（无 Origin 头）都放行；
+  // 跨站表单/脚本带不匹配的 Origin → 403（本地端口防护面：防浏览器侧跨源滥用）。
+  if (['POST', 'DELETE', 'PATCH', 'PUT'].includes(method)) {
+    const origin = req.headers.origin
+    if (origin) {
+      const host = req.headers.host || ''
+      const self = `http://${host}`
+      if (origin !== self && origin !== `https://${host}`) {
+        sendError(res, 'FORBIDDEN', '跨源请求被拒绝', 403)
+        return
+      }
+    }
+  }
+
   // 健康检查
   if (method === 'GET' && rel === 'healthz') {
     sendJson(res, 200, { ok: true, version: VERSION, embedding_status: engine.embedding.status().kind })
