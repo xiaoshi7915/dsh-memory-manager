@@ -46,5 +46,8 @@ export async function stats(engine) {
     needs_reindex: engine.needsReindex(),
     decrypt_failed: engine._decryptFailed?.size ?? 0,
     layered_present: engine.layered_present === true,
+    // P6 会话档位：默认档位 + 已显式设置的会话数
+    default_mode: engine.modes?.default ?? 'auto',
+    session_modes: engine.modes?.entries?.size ?? 0,
   }
 }

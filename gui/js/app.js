@@ -526,6 +526,28 @@ function initLvlTabs() {
     renderLogsView()
   })
   $('#logs-refresh')?.addEventListener('click', () => { state.lvl.logs.page = 0; renderLogsView() })
+  initModeControl()
+}
+
+/* P6 会话档位控制（manager 自己的 auto/chat/work/off）。 */
+function initModeControl() {
+  const status = $('#mode-status')
+  const sid = () => ($('#mode-session').value || '').trim() || 'default'
+  $('#mode-set')?.addEventListener('click', async () => {
+    try {
+      const r = await api.modeSet(sid(), $('#mode-value').value)
+      if (status) status.textContent = `已设置：${r.session_id} → ${r.mode}`
+    } catch (e) { if (status) status.textContent = `设置失败：${e.message}` }
+  })
+  $('#mode-refresh')?.addEventListener('click', async () => {
+    try {
+      const r = await api.modeGet(sid())
+      if (status) status.textContent = `当前：${r.session_id} → ${r.mode}（默认 ${r.default_mode}）`
+    } catch (e) { if (status) status.textContent = `读取失败：${e.message}` }
+  })
+  $('#mode-session')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('#mode-refresh')?.click() }
+  })
 }
 
 /* ---------------- 分层记忆视图（P3：只读直连 layered 真实数据） ---------------- */

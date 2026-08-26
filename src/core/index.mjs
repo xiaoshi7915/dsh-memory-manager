@@ -17,6 +17,7 @@ import { Lifecycle } from './lifecycle.mjs'
 import { exportBackup, importBackup } from './io.mjs'
 import { stats as collectStats } from './stats.mjs'
 import { withFileLog } from '../util/filelog.mjs'
+import { SessionModeStore } from './modes.mjs'
 import { loadConfig, saveConfig as saveConfigImpl, embeddingFingerprint, defaultBaseDir, isSharedLegacyDir } from '../config.mjs'
 import { newId, nowMs, clampImportance, MemoryError, assertString, assertOptionalString, assertTags } from './types.mjs'
 import { countTokens, tokenizeTerms } from './tokenizer.mjs'
@@ -81,6 +82,10 @@ export class MemoryEngine {
       // P5 文件日志：memory.log 镜像 warn/info/error（GUI「日志」Tab 数据源）
       engine.log = withFileLog(baseDir)
       engine.log.info(`[memory-manager] 引擎初始化完成（数据目录 ${baseDir}，嵌入=${engine.embedding.status().kind}${engine.embedding.status().degraded ? '/降级' : ''}）`)
+      // P6 会话档位：session-modes.json（auto/chat/work/off），gating 捕获/蒸馏/召回
+      engine.modes = new SessionModeStore(baseDir, { log: engine.log })
+      await engine.modes.init()
+      await engine.modes.recoverTmp()
       // 倒排索引：启动时全量构建一次（解密+分词），此后 addMemory/删除/导入增量维护
       engine.inverted.clear()
       for (const rec of engine.store.list()) {
@@ -394,6 +399,18 @@ export class MemoryEngine {
     return this.config
   }
 
+  /** 读会话档位（未设置返回默认 auto）。 */
+  getMode(sessionId) {
+    return this.modes?.get(sessionId) ?? 'auto'
+  }
+
+  /** 写会话档位（写穿 session-modes.json）。 */
+  setMode(sessionId, mode) {
+    const r = this.modes?.set(sessionId, mode)
+    this.log?.info(`[memory-manager] 会话 ${sessionId} 档位 → ${mode}`)
+    return r ?? { session_id: sessionId, mode, old_mode: null }
+  }
+
   async close() {
     // 🔴2 关闭兜底：取消防抖计时器并做最终向量刷盘，保证防抖期间的脏数据不丢
     if (this._vecFlushTimer) {
@@ -401,6 +418,7 @@ export class MemoryEngine {
       this._vecFlushTimer = null
     }
     try { await this.persistVectors() } catch { /* 忽略 */ }
+    try { await this.modes?.flush() } catch { /* 忽略 */ }
     try { this.store.close() } catch { /* 忽略 */ }
     this.releaseDirLock()
   }

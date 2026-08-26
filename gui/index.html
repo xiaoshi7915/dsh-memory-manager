@@ -38,6 +38,28 @@
           <div class="lvl-view" id="lvl-overview">
           <!-- layered 分层汇总（P3 只读；数据不可用时留空） -->
           <div id="layered-overview"></div>
+          <!-- P6 会话档位（manager 自己的 auto/chat/work/off） -->
+          <div class="card" id="mode-card" style="margin-bottom:16px">
+            <div class="lvl-ov-head">🎚️ 会话记忆档位</div>
+            <div class="toolbar" style="margin:8px 0 0">
+              <label class="field"><span>会话</span>
+                <input id="mode-session" type="text" placeholder="留空 = 默认会话" style="width:180px" />
+              </label>
+              <label class="field"><span>档位</span>
+                <select id="mode-value" style="min-width:120px">
+                  <option value="auto">auto（智能）</option>
+                  <option value="chat">chat（日常）</option>
+                  <option value="work">work（工作）</option>
+                  <option value="off">off（关闭）</option>
+                </select>
+              </label>
+              <button class="btn" id="mode-set">设置</button>
+              <button class="btn ghost sm" id="mode-refresh">读取</button>
+              <div class="grow"></div>
+              <span class="hint" id="mode-status"></span>
+            </div>
+            <div class="hint" style="margin-top:8px">off = 该会话对记忆系统完全隐身；auto = 跟随共存协调；chat/work = 强制捕获与蒸馏。</div>
+          </div>
           <div class="stat-strip">
             <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
             <div class="stat"><div class="num" id="st-st">-</div><div class="lbl">短期 tokens</div></div>

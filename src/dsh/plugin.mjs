@@ -196,9 +196,11 @@ const TOOL_DEFS = [
       needs_reindex: bool('是否需要重建索引'),
       decrypt_failed: int('解密失败条数（密钥可能已变更，历史记忆不可读）'),
       layered_present: bool('dsh-layered-memory 是否在场（在场时 Agent 分层记忆应调 layered 工具）'),
+      default_mode: str('会话记忆默认档位（auto/chat/work/off）'),
+      session_modes: int('已显式设置档位的会话数'),
     }),
     render(_args, v) {
-      return text(`记忆库统计：总数 ${v.total_memories}（长期 ${v.long_term_count} / 短期 ${v.short_term_tokens} tokens），占用 ${v.storage_size_mb}MB，嵌入 ${v.embedding_status}${v.needs_reindex ? '（需重建索引）' : ''}${v.layered_present ? '；dsh-layered-memory 在场（分层记忆请调其 memory_search/memory_read_scene）' : ''}`)
+      return text(`记忆库统计：总数 ${v.total_memories}（长期 ${v.long_term_count} / 短期 ${v.short_term_tokens} tokens），占用 ${v.storage_size_mb}MB，嵌入 ${v.embedding_status}${v.needs_reindex ? '（需重建索引）' : ''}${v.layered_present ? '；dsh-layered-memory 在场（分层记忆请调其 memory_search/memory_read_scene）' : ''}；默认档位 ${v.default_mode}${v.session_modes ? `（${v.session_modes} 个会话已设档位）` : ''}`)
     },
   },
 ]
@@ -488,12 +490,20 @@ export function apply(ctx, config = {}) {
       role = 'assistant'
       content = messageText(event.data?.message?.content)
     }
+    // P6 会话档位 gating：读 engine.modes（auto/chat/work/off）。
+    //  off → 本会话对记忆系统完全隐身（不捕获不蒸馏）；
+    //  auto → 跟随 eventMode 让位（layered 在场则让位）；
+    //  chat/work → 强制捕获与蒸馏（工作域优先；chat/work 区分在蒸馏管线 P8 生效）。
+    const mode = engine.getMode(sid)
+    const forceOn = mode === 'chat' || mode === 'work'
+    const captureOn = mode !== 'off' && (forceOn || eventMode.captureEnabled)
+    const summarizeOn = mode !== 'off' && (forceOn || eventMode.summarizeEnabled)
     // P2 让位：layered 在场（auto）时短期捕获关闭，避免同一对话被双方各存一份
-    if (role && content && eventMode.captureEnabled) {
+    if (role && content && captureOn) {
       await engine.shortTerm.append(sid, role, content, { maxLines: engine.config.short_term.max_messages })
     }
     // P2 让位：layered 在场（auto）或 off 时自动摘要关闭（后者仍保留短期捕获）
-    if (event.type === 'user/message' && eventMode.summarizeEnabled) {
+    if (event.type === 'user/message' && summarizeOn) {
       const count = await engine.shortTerm.count(sid)
       const threshold = engine.config.long_term.auto_summarize_threshold
       const prev = lastSummarizedCount.get(sid) ?? 0

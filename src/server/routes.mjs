@@ -347,6 +347,24 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, { saved: true, config: saved })
     return
   }
+  // 会话档位（P6：manager 自己的 auto/chat/work/off；与 layered/mode 共存不冲突）
+  if (method === 'GET' && rel === 'mode') {
+    const sid = url.searchParams.get('session') || 'default'
+    sendJson(res, 200, { session_id: sid, mode: engine.getMode(sid), default_mode: engine.modes?.default ?? 'auto' })
+    return
+  }
+  if (method === 'PUT' && rel === 'mode') {
+    const body = await readJsonBody(req)
+    const sid = typeof body.session === 'string' && body.session ? body.session : 'default'
+    const mode = body.mode
+    if (!['auto', 'chat', 'work', 'off'].includes(mode)) {
+      sendError(res, 'VALIDATION_ERROR', 'mode 必须是 auto/chat/work/off', 400)
+      return
+    }
+    const r = engine.setMode(sid, mode)
+    sendJson(res, 200, { session_id: r.session_id, mode: r.mode, old_mode: r.old_mode, default_mode: engine.modes?.default ?? 'auto' })
+    return
+  }
   // 导出
   if (method === 'GET' && rel === 'export') {
     const format = url.searchParams.get('format') === 'jsonl' ? 'jsonl' : 'json'
