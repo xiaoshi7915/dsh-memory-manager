@@ -1,6 +1,6 @@
 # 🧠 dsh-memory-manager
 
-面向 AI Agent 的统一记忆管理插件（DeepSeek Harness 生态）。短程滑动窗口记忆 + 长程向量记忆 + 语义/混合检索 + 智能摘要 + 生命周期管理（TTL / 重要性 / 存储上限 / 清理）+ 多会话隔离 + 全局记忆共享 + JSON/JSONL 导入导出，并附带可视化 Web 管理界面。
+面向 AI Agent 的统一记忆管理插件（DeepSeek Harness 生态）。短程滑动窗口记忆 + 长程向量记忆 + 语义/混合检索 + 智能摘要 + 生命周期管理（TTL / 重要性 / 存储上限 / 清理）+ 多会话隔离 + 全局记忆共享 + JSON/JSONL 导入导出，并附带可视化 Web 管理界面。分层能力：**L0 原始对话 / L1 原子记忆 / L2 场景 / L3 画像 / 会话记忆档位 / 三态嵌入源 + 模型下载 / 日志 / LLM 分层蒸馏**——可独立全功能运行，也可与 dsh-layered-memory 共存（浏览其真实分层数据）。
 
 > 完整需求与验收口径见 [`TASK-spec.md`](TASK-spec.md)。本插件**本地优先、零云依赖**，默认开箱即用（哈希+关键词降级），可配置真实嵌入模型提升语义精度。
 
@@ -18,7 +18,11 @@
 | 🔒 会话隔离 | 默认仅本会话可见；`is_global` 记忆跨会话共享，可整体开关 |
 | 🔐 安全 | 默认 AES-256-GCM 加密存储（主密码 scrypt 派生密钥） |
 | ⇅ 导入导出 | JSON / JSONL 备份，合并 / 替换两种恢复模式 |
-| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置，深浅双主题；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI）；记忆浏览内嵌**层级 Tab**（概览/L1 原子记忆/L2 场景/L3 画像/L0 对话，只读浏览 dsh-layered-memory 真实分层数据） |
+| 📜 日志 | `memory.log` 镜像（info/warn/error + 2MB 轮转 + Windows 容错），GUI「日志」Tab 只读分页 |
+| 🎚️ 会话记忆档位 | 每会话 `auto/chat/work/off`（`session-modes.json` 原子写），全链路 gating（捕获隐身 / 蒸馏暂停 / 召回过滤） |
+| 🎯 三态嵌入源 | `off/remote/local`（`embedding-source.json`）：本地 ONNX 推理（onnxruntime-node 可选）、远程 API、纯关键词；白名单 3 款模型（bge-small-zh-v1.5 / embeddinggemma-300m / bge-m3）断点续传下载 + 逐文件 sha256 校验 |
+| 🧬 分层蒸馏 | LLM（宿主 `ctx.llm`）管线：L0 对话持久化 → L1 原子记忆抽取 → L2 场景 → L3 画像；与 `mm_summarize` 摘要并存 |
+| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置，深浅双主题（纯跟随系统）；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI）；记忆浏览内嵌**层级 Tab**（概览/L0 对话/L1 原子记忆/L2 场景/L3 画像/日志）：layered 在场只读其真实分层数据，缺席则读**本插件自持蒸馏数据**（仅装本插件也全功能可跑） |
 
 ---
 
@@ -28,14 +32,17 @@
 dsh-memory-manager/
 ├── src/
 │   ├── core/            # 核心引擎（类型/分词/短期/嵌入/向量/加密/存储/检索/摘要/生命周期/导入导出/统计/门面）
-│   ├── tools/           # 7 个 Agent 工具（handlers.mjs + 定义）
+│   │                     #   + modes.mjs 档位 / model-catalog.mjs 模型白名单 / downloader.mjs 下载队列
+│   │                     #   + embedding-source.mjs 三态源 / distill.mjs 分层蒸馏 / self-layered.mjs 自持分层读
+│   ├── tools/           # 8 个 Agent 工具（handlers.mjs + 定义：mm_add/search/get_recent/summarize/distill/delete/update_importance/stats）
 │   ├── triggers/        # 触发词规则
 │   ├── client/          # 浏览器 half（bundle.js：注入设置侧边栏「记忆管理」，iframe 内嵌 GUI）
 │   ├── dsh/plugin.mjs   # DSH 插件适配层（name/inject/apply）
+│   ├── util/            # filelog.mjs（memory.log 镜像 + 轮转）
 │   └── server/          # 共享 REST 路由 + 独立服务器入口
 ├── gui/                 # Web 界面（index.html 真实模式 / preview.html 独立预览 / css / js）
 ├── contracts/           # 工具契约（tools.md）与 Web API 契约（web-api.md）
-├── scripts/             # seed-2000 / verify / smoke / client（客户端契约探针，含 md 报告）
+├── scripts/             # seed-2000 / verify / smoke / client（客户端契约探针，含 md 报告）+ 各阶段聚焦测试
 ├── review/              # UI 视觉验收
 ├── TASK-spec.md         # 需求规格
 ├── ARCHITECTURE.md      # 架构设计
@@ -64,8 +71,15 @@ npm run serve          # 默认 http://127.0.0.1:4599，PORT 可覆盖
 ~/.dsh/memory-manager/
 ├── config.json              # 配置（自动生成默认值）
 ├── short_term/{session}.jsonl  # 短期滑动窗口
+├── conversations/           # L0 原始对话镜像（YYYY-MM-DD.jsonl，只增不删）
+├── scenes/{chat,work}/*.md  # L2 场景块（META 前块，与 layered 布局一致）
+├── persona-chat.md / persona-work.md  # L3 画像
+├── session-modes.json       # 会话记忆档位（auto/chat/work/off）
+├── embedding-source.json    # 嵌入源（off/remote/local + activeModel）
+├── models/{id}/             # 下载的本地嵌入模型（onnx 文件 + sha256 校验）
+├── memory.log               # 日志镜像（2MB 轮转）
 ├── long_term/
-│   ├── memories.db          # SQLite 元数据（内容默认加密）
+│   ├── memories.db          # SQLite 元数据（内容默认加密；source='distill' 为蒸馏 L1）
 │   ├── vector.index         # 向量索引（原子写，崩溃不留半写）
 │   └── embeddings/          # 嵌入模型缓存
 ├── .salt / .key             # 加密盐与随机密钥
@@ -76,10 +90,10 @@ npm run serve          # 默认 http://127.0.0.1:4599，PORT 可覆盖
 ### 作为 DSH 插件运行
 
 插件入口 `src/dsh/plugin.mjs`（`export const name / inject / apply`），基于真实 DSH API 实现：
-- 通过 `@deepseek-ai/dsh-tools` 的 `defineTool` + `ctx.tools.register` 注册 7 个 Agent 工具（对外名 `mm_*`；`compat.bareSearch=true` 时 best-effort 额外注册旧名 `memory_*` 别名，被他人占用则跳过）
-- 通过 `ctx.webServer.register` 挂载 `/api/memory/*` REST 路由（记忆列表 SQL 级分页；`/api/memory/meta` 返回去重会话/标签；搜索支持 `offset` 分页）
-- 通过 `ctx.on('session/event')` 监听会话事件：写入短期记忆、超阈值自动摘要
-- 通过 `ctx.get('llm')` 接入真实 LLM 生成式摘要（`ctx.llm.stream` + `BlockAssembler`），失败自动回退本地抽取式
+- 通过 `@deepseek-ai/dsh-tools` 的 `defineTool` + `ctx.tools.register` 注册 **8 个 Agent 工具**（对外名 `mm_*`：add / search / get_recent / summarize / **distill** / delete / update_importance / stats；`compat.bareSearch=true` 时 best-effort 额外注册旧名 `memory_*` 别名，被他人占用则跳过）
+- 通过 `ctx.webServer.register` 挂载 `/api/memory/*` REST 路由（记忆列表 SQL 级分页；`/api/memory/meta` 返回去重会话/标签；搜索支持 `offset` 分页；**档位 mode / 模型 models / 蒸馏 distill / 日志 logs**）
+- 通过 `ctx.on('session/event')` 监听会话事件：写入短期记忆、超阈值自动摘要（按会话档位 gating：off 隐身、auto 跟随共存协调）
+- 通过 `ctx.get('llm')` 接入真实 LLM 生成式摘要（`ctx.llm.stream` + `BlockAssembler`）与**分层蒸馏**（`mm_distill`：L0→L1→L2→L3），失败自动回退本地抽取式 / 降级
 - **P2 事件协调**（与 dsh-layered-memory 共存）：`config.hooks.sessionEventSummarize = auto|on|off`，默认 `auto` —— 启动探测 layered（cordis 注册表含 `dsh-memory`/layered，或裸工具 `memory_search` 已被注册且本插件未开 bareSearch），在场即让位（不短期捕获、不自动摘要），避免双写/重复摘要；`on` 强制接管，`off` 只关自动摘要（保留短期捕获）
 - **浏览器 half**（`dsh.client`）：手写 plain-JS bundle 注入 `settings.section` 槽位，设置侧边栏出现「记忆管理」入口，iframe 内嵌 `src/client/bundle.js`（无打包器、无 RPC，纯 HTTP 走 `/api/memory/*`）
 
@@ -174,7 +188,7 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 
 ## Web API（`/api/memory`）
 
-`healthz` / `stats` / `meta` / `memories`(GET, 列表, SQL 分页) / `memories/:id`(GET/DELETE) / `memories/delete`(批量) / `search`(支持 offset 分页) / `recent` / `summarize` / `memories/:id/importance`(PATCH) / `config`(GET/POST) / `export?format=json|jsonl` / `import` / `cleanup`。详见 [`contracts/web-api.md`](contracts/web-api.md)。
+`healthz` / `stats` / `meta` / `memories`(GET, 列表, SQL 分页) / `memories/:id`(GET/DELETE) / `memories/delete`(批量) / `search`(支持 offset 分页) / `recent` / `summarize` / `memories/:id/importance`(PATCH) / `config`(GET/POST) / `export?format=json|jsonl` / `import` / `cleanup` / **`mode`(GET/PUT 档位) / `models`(GET 列表 + POST download/cancel/switch + DELETE) / `distill`(POST 分层蒸馏) / `logs`(GET)** / `layered/*`（分层浏览：layered 在场读其真实数据，缺席降级读自持蒸馏数据，`stats.source` 区分 layered|self）。详见 [`contracts/web-api.md`](contracts/web-api.md)。
 
 ---
 
@@ -187,5 +201,8 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 - **重建索引**：更换嵌入模型后点「重建索引」按新模型对全库重嵌入并覆写向量索引；重建完成前检索自动降级为关键词匹配（不报错、不返回旧模型乱序结果）。
 - **明文缓存**：搜索高频解密场景以 `id → 明文` 内存缓存加速。
 - **加密存储**：默认加密；`master_password` 提供则 scrypt 派生，否则自动生成随机密钥（`.key`，0600）。**加密守卫**：库里有记录时禁止修改主密码/加密开关（避免密钥变更静默损坏存量），解密失败显式标记并计入 `stats.decrypt_failed`；`config.json` 原子写 + 0600。
-- **分层只读浏览**（与 dsh-layered-memory 共存）：Web GUI 的「记忆浏览」内嵌层级 Tab（概览/L1 原子记忆/L2 场景/L3 画像/L0 对话），**只读直连** layered 的真实数据（`~/.dsh/memory`：readOnly SQLite + JSONL/MD 解析），数据不可用时 fail-closed（503，GUI 显不可用，绝不返回猜测数据）；唯一写点是记忆模式 `mode` PUT（原子写 + mtime 并发守卫，实验性）。分层浏览不做导入/清理/重建索引（数据由 layered 独占写）。
+- **分层浏览（自持 / 共存双源）**：Web GUI「记忆浏览」内嵌层级 Tab（概览/L0 对话/L1 原子记忆/L2 场景/L3 画像/日志）。数据源策略：layered 在场 → 只读直连其真实数据（`~/.dsh/memory`：readOnly SQLite + JSONL/MD 解析，fail-closed 绝不返回猜测数据）；layered 缺席 → 读**本插件自持蒸馏数据**（`conversations/` + `memories.db source='distill'` + `scenes/` + `persona-*.md`），`stats.source` 区分 `layered|self`。分层浏览不做导入/清理/重建索引。
+- **分层蒸馏（P8）**：`mm_distill` 走宿主 `ctx.llm`（护栏包裹，零额外依赖）：L0 会话轮次镜像为日期 JSONL → L1 抽取原子记忆（family/type/priority，入库 `source='distill'`，family/type 编码进 tags 保持 schema 稳定）→ L2 场景 `.md`（META 前块 + 安全文件名防穿越）→ L3 画像（纯正文，同 layered 布局）。与 `mm_summarize`（短期→L1 摘要）并存互补。
+- **三态嵌入源（P7）**：`off/remote/local`。本地 ONNX 推理**可选依赖**（`onnxruntime-node` 动态加载，未装明确降级哈希并提示，同 dsh-layered-memory 的处理——它也是 worker 内动态加载，非硬依赖）；模型下载白名单 3 款（bge-small-zh-v1.5 / embeddinggemma-300m / bge-m3），逐文件 size+sha256+revision 锁定，Range 断点续传 + 流式校验（失配删重下）+ 磁盘门禁 + 取消保留断点。
+- **会话记忆档位（P6）**：每会话 `auto/chat/work/off`，全链路 gating（捕获隐身 / 蒸馏暂停 / 召回过滤），`session-modes.json` 原子写 + 串行队列 + 90 天剪枝 + 500 会话上限。
 - **记忆仅显式工具召回**：DSH 无 `ctx.injection`；真实注入面（`agent.inject`/`agent/pre-step`）归 dsh-layered-memory 的 recall 注入所有。本插件不做隐式注入（避免双份上下文 + token 浪费），Agent 通过 `mm_*` 显式调用；`mm_search` 结果带 `source: 'memory-manager'` 与 `layer`（long_term/summary），`mm_stats` 带 `layered_present`（在场时分层记忆请调 layered 的 `memory_search`/`memory_read_scene`）。
