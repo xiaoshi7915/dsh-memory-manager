@@ -324,3 +324,16 @@ html[data-theme='dark'] .alert.ok { background: #123325; color: #57d4a2; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* P5 »’÷æ ”Õº */
+.log-list { display: flex; flex-direction: column; gap: 4px; }
+.log-line { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--border); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+.log-line .log-badge { flex: none; font-weight: 700; text-transform: uppercase; font-size: 10px; padding: 1px 6px; border-radius: 4px; }
+.log-badge.info { background: rgba(79,172,254,.15); color: #4facfe; }
+.log-badge.warn { background: rgba(255,193,7,.15); color: #ffc107; }
+.log-badge.err { background: rgba(255,82,82,.15); color: #ff5252; }
+.log-line .log-ts { flex: none; color: var(--text-3); font-size: 11px; }
+.log-line .log-msg { flex: 1; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.log-line.warn { border-left: 3px solid #ffc107; }
+.log-line.err { border-left: 3px solid #ff5252; }
+

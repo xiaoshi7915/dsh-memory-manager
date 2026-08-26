@@ -25,13 +25,14 @@
       <div class="content">
         <!-- 记忆浏览（含内嵌语义搜索 + 导入导出入口 + 分层 Tab） -->
         <section class="panel active" id="panel-browser">
-          <!-- 层级 Tab（P1 骨架；L1/L2/L3/L0 真实分层数据在后续阶段接入） -->
+          <!-- 层级 Tab（P1 骨架；L0/L1/L2/L3/日志 真实数据在后续阶段接入） -->
           <div class="lvl-tabs" id="lvl-tabs" role="tablist" aria-label="记忆层级">
             <span class="lvl-tab active" data-lvl="overview" role="tab" tabindex="0" aria-selected="true">概览</span>
+            <span class="lvl-tab" data-lvl="l0" role="tab" tabindex="0" aria-selected="false">L0 对话</span>
             <span class="lvl-tab" data-lvl="l1" role="tab" tabindex="0" aria-selected="false">L1 原子记忆</span>
             <span class="lvl-tab" data-lvl="l2" role="tab" tabindex="0" aria-selected="false">L2 场景</span>
             <span class="lvl-tab" data-lvl="l3" role="tab" tabindex="0" aria-selected="false">L3 画像</span>
-            <span class="lvl-tab" data-lvl="l0" role="tab" tabindex="0" aria-selected="false">L0 对话</span>
+            <span class="lvl-tab" data-lvl="logs" role="tab" tabindex="0" aria-selected="false">日志</span>
           </div>
           <div class="lvl-views">
           <div class="lvl-view" id="lvl-overview">
@@ -87,7 +88,10 @@
           <div class="pager" id="search-pager" hidden></div>
           </div><!-- /#lvl-overview -->
 
-          <!-- 分层视图（P3 接入真实 layered 数据；P1 占位） -->
+          <!-- 分层视图（P3 接入真实 layered 数据；P5 新增日志） -->
+          <div class="lvl-view" id="lvl-l0" hidden>
+            <div class="empty"><div class="big">💬</div><div style="font-weight:600">L0 原始对话</div><div class="hint">真实分层数据在后续阶段接入（按会话浏览）</div></div>
+          </div>
           <div class="lvl-view" id="lvl-l1" hidden>
             <div class="empty"><div class="big">🧬</div><div style="font-weight:600">L1 原子记忆</div><div class="hint">真实分层数据在后续阶段接入（只读浏览 layered 的 L1 原子记忆）</div></div>
           </div>
@@ -97,8 +101,20 @@
           <div class="lvl-view" id="lvl-l3" hidden>
             <div class="empty"><div class="big">🎭</div><div style="font-weight:600">L3 画像</div><div class="hint">真实分层数据在后续阶段接入（persona-chat / persona-work）</div></div>
           </div>
-          <div class="lvl-view" id="lvl-l0" hidden>
-            <div class="empty"><div class="big">💬</div><div style="font-weight:600">L0 原始对话</div><div class="hint">真实分层数据在后续阶段接入（按会话浏览）</div></div>
+          <div class="lvl-view" id="lvl-logs" hidden>
+            <div class="toolbar">
+              <label class="field"><span>级别</span>
+                <select id="logs-level" style="min-width:110px">
+                  <option value="">全部</option><option value="info">info</option>
+                  <option value="warn">warn</option><option value="error">error</option>
+                </select>
+              </label>
+              <button class="btn ghost sm" id="logs-refresh">刷新</button>
+              <div class="grow"></div>
+              <span class="hint" id="logs-total"></span>
+            </div>
+            <div id="logs-list"></div>
+            <div class="pager" id="logs-pager" hidden></div>
           </div>
           </div><!-- /.lvl-views -->
         </section>

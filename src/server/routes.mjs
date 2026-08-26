@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createLayeredReader } from '../core/layered.mjs'
+import { readLog } from '../util/filelog.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const GUI_ROOT = path.resolve(__dirname, '..', '..', 'gui')
@@ -262,6 +263,15 @@ async function handle(req, res, getEngine) {
   // 元数据（P3：去重会话 + 标签，取代 GUI 用 limit:500 抽样的缺陷）
   if (method === 'GET' && rel === 'meta') {
     sendJson(res, 200, engine.store.meta())
+    return
+  }
+  // 日志（P5：memory.log 分页读取，紧随 L3 的「日志」Tab）
+  if (method === 'GET' && rel === 'logs') {
+    const sp = url.searchParams
+    const offset = Number(sp.get('offset')) || 0
+    const limit = Number(sp.get('limit')) || 100
+    const level = sp.get('level') || undefined
+    sendJson(res, 200, readLog(engine.baseDir, { offset, limit, level }))
     return
   }
   // 单条

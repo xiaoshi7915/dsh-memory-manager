@@ -59,7 +59,7 @@ const state = {
   filters: { session: '', global: '', tag: '' },
   config: null,
   mode: 'browse', // 'browse'（记忆列表） | 'search'（语义检索结果，内嵌于同一面板）
-  tab: 'overview', // 层级 Tab：overview | l1 | l2 | l3 | l0（P1 骨架；P3 接真实分层数据）
+  tab: 'overview', // 层级 Tab：overview | l0 | l1 | l2 | l3 | logs（P5 新增日志）
   browser: { page: 0, pageSize: 50, total: 0 }, // 记忆浏览分页（0-based）
   search: { page: 0, pageSize: 5, total: 0 }, // 语义搜索分页（页大小 = Top-K）
   lvl: { // 分层视图状态（P3）
@@ -69,6 +69,7 @@ const state = {
     scenes: { family: '' },
     sceneOpen: null, // 展开的场景 path
     l3Fam: 'chat',
+    logs: { page: 0, pageSize: 50, total: 0, level: '' }, // P5 日志视图
   },
 }
 
@@ -518,6 +519,13 @@ function initLvlTabs() {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate() }
     })
   })
+  // P5 日志视图：级别筛选 + 刷新
+  $('#logs-level')?.addEventListener('change', (e) => {
+    state.lvl.logs.level = e.target.value
+    state.lvl.logs.page = 0
+    renderLogsView()
+  })
+  $('#logs-refresh')?.addEventListener('click', () => { state.lvl.logs.page = 0; renderLogsView() })
 }
 
 /* ---------------- 分层记忆视图（P3：只读直连 layered 真实数据） ---------------- */
@@ -578,10 +586,11 @@ async function loadLayeredOverview() {
 
 /** 分层视图统一渲染入口。 */
 async function renderLayeredView(lvl) {
+  if (lvl === 'l0') return renderL0View()
   if (lvl === 'l1') return renderL1View()
   if (lvl === 'l2') return renderL2View()
   if (lvl === 'l3') return renderL3View()
-  if (lvl === 'l0') return renderL0View()
+  if (lvl === 'logs') return renderLogsView()
 }
 
 /** L1 原子记忆列表（类型/会话筛选 + 分页）。 */
@@ -864,6 +873,46 @@ function convLine(m) {
   <div class="conv-line ${m.role === 'user' ? 'u' : m.role === 'assistant' ? 'a' : ''}">
     <div class="conv-meta"><span class="badge ${m.role === 'user' ? 'session' : 'global'}">${role}</span><span class="hint">${esc(m.recorded_at || '')}</span></div>
     <div class="conv-text">${esc(m.content)}</div>
+  </div>`
+}
+
+/* ---------------- 日志视图（P5：memory.log 分页读取） ---------------- */
+
+function renderLogsView() {
+  const box = $('#lvl-logs')
+  const listBox = $('#logs-list')
+  const pager = $('#logs-pager')
+  const totalEl = $('#logs-total')
+  const s = state.lvl.logs
+  box.hidden = false
+  listBox.innerHTML = spinner('正在读取日志…')
+  api.logs({ offset: s.page * s.pageSize, limit: s.pageSize, level: s.level || '' })
+    .then((data) => {
+      totalEl.textContent = `共 ${data.total} 条`
+      if (data.items.length === 0) {
+        listBox.innerHTML = emptyBox('暂无日志', 'memory.log 尚未写入任何记录（有新活动后自动出现）')
+      } else {
+        listBox.innerHTML = `<div class="log-list">${data.items.map((l) => logLine(l)).join('')}</div>`
+      }
+      renderPager(pager, {
+        page: s.page, pageSize: s.pageSize, total: data.total, sizes: [20, 50, 100],
+        onGo: (p) => { s.page = p; renderLogsView() },
+        onSize: (sz) => { s.pageSize = sz; s.page = 0; renderLogsView() },
+      })
+    })
+    .catch((e) => {
+      listBox.innerHTML = `<div class="alert err">加载日志失败：${esc(e.message)}</div>`
+    })
+}
+
+function logLine(l) {
+  const lv = l.level === 'error' ? 'err' : l.level === 'warn' ? 'warn' : 'info'
+  const ts = l.ts ? new Date(l.ts).toLocaleString() : ''
+  return `
+  <div class="log-line ${lv}">
+    <span class="log-badge ${lv}">${esc(l.level)}</span>
+    <span class="log-ts">${esc(ts)}</span>
+    <span class="log-msg">${esc(l.message)}</span>
   </div>`
 }
 

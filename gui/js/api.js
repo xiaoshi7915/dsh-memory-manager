@@ -112,6 +112,14 @@ export class MemoryApi {
   layeredModeGet(session) { return this.get(`/api/memory/layered/mode${session ? `?session=${encodeURIComponent(session)}` : ''}`) }
   layeredModeSet(session, mode) { return this.put('/api/memory/layered/mode', { session, mode }) }
 
+  // ---- 日志（P5：memory.log 分页读取，GUI「日志」Tab） ----
+  logs(params = {}) {
+    const q = new URLSearchParams()
+    for (const k of ['offset', 'limit', 'level']) if (params[k] !== undefined && params[k] !== '') q.set(k, params[k])
+    const s = q.toString()
+    return this.get(`/api/memory/logs${s ? `?${s}` : ''}`)
+  }
+
   put(path, body) {
     return this._fetch(path, {
       method: 'PUT',

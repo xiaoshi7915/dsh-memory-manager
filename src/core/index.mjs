@@ -16,6 +16,7 @@ import { summarizeSession } from './summarize.mjs'
 import { Lifecycle } from './lifecycle.mjs'
 import { exportBackup, importBackup } from './io.mjs'
 import { stats as collectStats } from './stats.mjs'
+import { withFileLog } from '../util/filelog.mjs'
 import { loadConfig, saveConfig as saveConfigImpl, embeddingFingerprint, defaultBaseDir, isSharedLegacyDir } from '../config.mjs'
 import { newId, nowMs, clampImportance, MemoryError, assertString, assertOptionalString, assertTags } from './types.mjs'
 import { countTokens, tokenizeTerms } from './tokenizer.mjs'
@@ -77,6 +78,9 @@ export class MemoryEngine {
       })
       await engine.embedding.init()
       engine.lifecycle = new Lifecycle(engine)
+      // P5 文件日志：memory.log 镜像 warn/info/error（GUI「日志」Tab 数据源）
+      engine.log = withFileLog(baseDir)
+      engine.log.info(`[memory-manager] 引擎初始化完成（数据目录 ${baseDir}，嵌入=${engine.embedding.status().kind}${engine.embedding.status().degraded ? '/降级' : ''}）`)
       // 倒排索引：启动时全量构建一次（解密+分词），此后 addMemory/删除/导入增量维护
       engine.inverted.clear()
       for (const rec of engine.store.list()) {
@@ -341,7 +345,9 @@ export class MemoryEngine {
 
   /** 导入备份。 */
   async importBackup(text, opts = {}) {
-    return importBackup(this, text, opts)
+    const r = await importBackup(this, text, opts)
+    this.log?.info(`[memory-manager] 导入备份（mode=${opts.mode ?? 'merge'}）：导入 ${r.imported} / 跳过 ${r.skipped} / 失败 ${r.failed}`)
+    return r
   }
 
   /** 手动清理：TTL 过期 + 超限。 */
@@ -349,6 +355,7 @@ export class MemoryEngine {
     const expired = this.lifecycle.expire()
     const evicted = this.lifecycle.enforceStorageLimit()
     await this.persistVectors()
+    this.log?.info(`[memory-manager] 生命周期清理：过期 ${expired} 条，超限淘汰 ${evicted} 条`)
     return { expired, evicted, last_compacted: this.lastCompacted ? new Date(this.lastCompacted).toISOString() : null }
   }
 
