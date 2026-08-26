@@ -492,8 +492,15 @@ async function renderModelsCard() {
       status.textContent = `${srcLabel} · 当前运行 kind=${embedding.kind || '-'}${embedding.degraded ? '（降级）' : ''}`
       $('#md-source').value = source
     }
+    // 本地运行时就绪提示（对齐 layered：缺少推理运行时 → 明确降级提示，不静默）
+    let runtimeHint = ''
+    if (source === 'local' && embedding.kind === 'hash') {
+      runtimeHint = `<div class="alert err" style="margin:8px 0">加载失败：本地推理运行时未就绪（onnxruntime-node 未安装或模型未下载）——已降级哈希嵌入。首次启用本地嵌入需安装推理运行时（约 100~200MB）：<code>npm i onnxruntime-node</code></div>`
+    } else if (source === 'local' && embedding.kind === 'local') {
+      runtimeHint = `<div class="hint" style="margin:8px 0;color:var(--ok)">✓ 本地推理已就绪（${esc(embedding.detail || '')}）</div>`
+    }
     // 模型列表
-    listBox.innerHTML = models.map((m) => {
+    listBox.innerHTML = (runtimeHint || '') + models.map((m) => {
       const stateLabel = m.state === 'downloaded' ? `<span class="badge ok">✓ 已下载</span>` : m.state === 'partial' ? `<span class="badge warn">◐ 未完成</span>` : `<span class="badge">未下载</span>`
       const sizeFmt = m.totalBytes >= 1e6 ? `${(m.totalBytes / 1e6).toFixed(0)}MB` : `${Math.round(m.totalBytes / 1e3)}KB`
       const btns = m.state === 'downloaded'
@@ -523,7 +530,11 @@ async function renderModelsCard() {
       _mdPolling = setTimeout(renderModelsCard, 1000)
     }
   } catch (e) {
-    listBox.innerHTML = `<div class="alert err">加载模型失败：${esc(e.message)}</div>`
+    // 404 = 服务端接口未就绪（web 进程需 reload 生效 P5-P7 端点），非真实模型错误
+    const msg = /404|Not found|not found/i.test(String(e.message))
+      ? '⚠️ 模型接口未就绪：服务端需 reload 后生效（P5-P7 端点）。独立模式可运行 `node src/server/index.mjs` 验证。'
+      : esc(e.message)
+    listBox.innerHTML = `<div class="alert err">加载模型失败：${msg}</div>`
   }
 }
 
