@@ -1098,12 +1098,6 @@ function initEvents() {
   $('#st-cleanup').addEventListener('click', doCleanup)
   $('#st-reindex-btn').addEventListener('click', doReindex)
   $('#ex-btn').addEventListener('click', doExport)
-  $('#theme-btn').addEventListener('click', () => {
-    const cur = document.documentElement.getAttribute('data-theme')
-    const next = cur === 'dark' ? 'light' : 'dark'
-    document.documentElement.setAttribute('data-theme', next)
-    localStorage.setItem('dsh_mem_theme', next)
-  })
 
   // 记忆卡片内的操作按钮（事件委托）
   document.addEventListener('click', async (e) => {
@@ -1155,11 +1149,10 @@ function initEvents() {
 }
 
 async function init() {
-  // 主题：默认跟随系统/宿主（prefers-color-scheme），用户显式切换后才记住选择
-  const savedTheme = localStorage.getItem('dsh_mem_theme')
+  // 主题：跟随系统/宿主（prefers-color-scheme），无手动切换器
   const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
   const applyTheme = () => {
-    const t = localStorage.getItem('dsh_mem_theme') || (mq?.matches ? 'dark' : 'light')
+    const t = mq?.matches ? 'dark' : 'light'
     document.documentElement.setAttribute('data-theme', t)
   }
   applyTheme()

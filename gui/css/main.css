@@ -1,4 +1,4 @@
-/* dsh-memory-manager Web GUI 样式（浅色/深色） */
+﻿/* dsh-memory-manager Web GUI 样式（浅色/深色） */
 :root {
   --bg: #f4f6fb;
   --panel: #ffffff;
@@ -65,7 +65,6 @@ a { color: var(--accent); text-decoration: none; }
 }
 .breadcrumb .crumb:hover { background: var(--panel-2); color: var(--text); }
 .breadcrumb .crumb.active { color: var(--accent); font-weight: 650; cursor: default; background: var(--accent-soft); }
-.breadcrumb .crumb.root { color: var(--text-2); font-weight: 500; cursor: default; background: none; }
 .breadcrumb .crumb-sep { color: var(--text-3); font-size: 12px; }
 
 /* 层级 Tab 条（记忆浏览面板内的 L0–L3 切换，独立分段控件，区别于面包屑轨迹） */
@@ -325,7 +324,7 @@ html[data-theme='dark'] .alert.ok { background: #123325; color: #57d4a2; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* P5 ��־��ͼ */
+/* P5 ��־��ͼ */
 .log-list { display: flex; flex-direction: column; gap: 4px; }
 .log-line { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--border); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
 .log-line .log-badge { flex: none; font-weight: 700; text-transform: uppercase; font-size: 10px; padding: 1px 6px; border-radius: 4px; }
