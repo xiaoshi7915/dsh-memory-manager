@@ -35,6 +35,21 @@ e.log?.info('本插件日志：今日完成量子计算文档整理')
   check('searchLayers 每层封顶 3 条', Object.values(ls.reduce((m, r) => ((m[r.layer] = (m[r.layer] || 0) + 1), m), {})).every((n) => n <= 3))
 }
 
+// ---- searchLayers 日志双源融合（临时 DSH_LAYERED_DIR 隔离） ----
+{
+  const fsp = await import('node:fs/promises')
+  const ldir = mkdtempSync(join(tmpdir(), 'dsh-mem-lsearch-ldir-'))
+  await fsp.mkdir(join(ldir), { recursive: true })
+  await fsp.writeFile(join(ldir, 'memory.log'), '2026-08-25T10:00:00.000Z [info] 分层日志：量子退火实验记录\n', 'utf8')
+  process.env.DSH_LAYERED_DIR = ldir
+  try {
+    const ls = searchLayers(e, '量子退火')
+    check('searchLayers 融合 layered 真实日志', ls.some((r) => r.layer === 'log' && r.source.includes('layered') && r.content.includes('量子退火')), JSON.stringify(ls.filter((x) => x.layer === 'log').map((x) => `${x.source}:${x.content.slice(0, 20)}`)))
+  } finally {
+    delete process.env.DSH_LAYERED_DIR
+  }
+}
+
 // ---- engine.search scope='all' 并入层结果 ----
 {
   const all = await e.search('量子计算', { scope: 'all', topK: 10, threshold: 0.05 })

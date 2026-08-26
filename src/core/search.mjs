@@ -10,6 +10,7 @@ import { countTokens } from './tokenizer.mjs'
 import { tokenizeTerms } from './tokenizer.mjs'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { layeredBaseDir } from './layered.mjs'
 
 /** 关键词对单文本打分（词项重叠，0..1）；queryTerms 为空返回 null。 */
 function keywordScoreFor(text, queryTerms, queryRaw) {
@@ -81,16 +82,21 @@ export function searchLayers(engine, query) {
       }
     } catch { /* 跳过 */ }
   }
-  // 日志
-  for (const f of ['memory.log', 'memory.log.1']) {
-    const p = join(baseDir, f)
-    try {
-      if (existsSync(p)) {
-        for (const line of readFileSync(p, 'utf8').split('\n')) {
-          if (line.trim()) push(line, 'log', 'memory-log', 'default', 0)
+  // 日志（双源融合：既有分层真实日志 + 本插件日志，与「日志 Tab」一致）
+  const layeredDir = layeredBaseDir()
+  const logDirs = [{ dir: layeredDir, source: 'layered' }, { dir: baseDir, source: 'manager' }]
+    .filter((x, i, a) => a.findIndex((y) => y.dir === x.dir) === i)
+  for (const { dir, source } of logDirs) {
+    for (const f of ['memory.log', 'memory.log.1']) {
+      const p = join(dir, f)
+      try {
+        if (existsSync(p)) {
+          for (const line of readFileSync(p, 'utf8').split('\n')) {
+            if (line.trim()) push(line, 'log', `memory-log-${source}`, 'default', 0)
+          }
         }
-      }
-    } catch { /* 跳过 */ }
+      } catch { /* 跳过 */ }
+    }
   }
   // 每层最多保留 3 条最高分（避免日志/对话刷屏），排序取 top
   const perLayer = new Map()
