@@ -120,6 +120,39 @@ const check = (name, cond, detail = '') => { results.push({ name, ok: !!cond });
   check('2f 非法 id 拒绝（穿越）', (await q.deleteModel('../../evil')).ok === false)
 }
 
+// ---- 2g. 镜像 failover（主镜像失败自动切备用）+ 默认镜像 = hf-mirror.com ----
+{
+  const { ModelDownloadQueue } = await import('../src/core/downloader.mjs')
+  const fsp = await import('node:fs/promises')
+  const payload = Buffer.from('mirror-failover-'.repeat(50))
+  const payloadSha = createHash('sha256').update(payload).digest('hex')
+  const synthEntry = {
+    id: 'synth-mirror', repo: 'fake/repo', revision: 'b'.repeat(40), dims: 4, contextTokens: 8, pooling: 'mean',
+    files: [{ path: 'model.bin', size: payload.length, sha256: payloadSha }],
+  }
+  const modelsDir = join(base, 'models', 'synth-mirror')
+  try { await fsp.rm(modelsDir, { recursive: true, force: true }) } catch {}
+  // 主镜像 500，备用镜像 ok → 应 failover 成功
+  const seenMirrors = []
+  const failoverFetch = async (url) => {
+    seenMirrors.push(url)
+    if (url.startsWith('https://hf-mirror.com/')) {
+      return { ok: false, status: 500, headers: { get: () => null }, body: null }
+    }
+    const body = new ReadableStream({ start(c) { c.enqueue(payload); c.close() } })
+    return { ok: true, status: 200, headers: { get: (k) => (k === 'content-length' ? String(payload.length) : null) }, body }
+  }
+  const q = new ModelDownloadQueue(base, { fetchImpl: failoverFetch })
+  const r = await q.startEntry(synthEntry)
+  check('2g 默认镜像列表首位 hf-mirror.com', q.listMirrors()[0] === 'https://hf-mirror.com', JSON.stringify(q.listMirrors()))
+  check('2g 镜像列表含官方兜底', q.listMirrors().includes('https://huggingface.co'))
+  check('2g 主镜像失败自动切备用完成', r.phase === 'done', JSON.stringify(r))
+  check('2g 确实访问过两个镜像', seenMirrors.some((u) => u.startsWith('https://hf-mirror.com/')) && seenMirrors.some((u) => u.startsWith('https://huggingface.co/')), JSON.stringify(seenMirrors[0]))
+  // 显式 mirror 覆盖
+  const q2 = new ModelDownloadQueue(base, { mirror: 'https://custom.example.com', fetchImpl: failoverFetch })
+  check('2g 显式 mirror 生效', q2.listMirrors()[0] === 'https://custom.example.com', JSON.stringify(q2.listMirrors()))
+}
+
 // ---- 3. EmbeddingSourceStore ----
 {
   const { EmbeddingSourceStore, SOURCES } = await import('../src/core/embedding-source.mjs')

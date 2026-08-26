@@ -17,17 +17,24 @@ import path from 'node:path'
 import { catalogById, catalogTotalBytes, MODEL_CATALOG } from './model-catalog.mjs'
 
 const DISK_HEADROOM = 1.2
-const DEFAULT_MIRROR = 'https://huggingface.co'
+// 默认镜像（对齐 dsh-layered-memory：国内可达的 hf-mirror.com），可配回官方；备用官方兜底。
+const DEFAULT_MIRROR = 'https://hf-mirror.com'
+const FALLBACK_MIRROR = 'https://huggingface.co'
 
 export class ModelDownloadQueue {
   /**
    * @param {string} dataDir 数据目录（models/<id>/ 写在这里）
-   * @param {{log?: {info?: Function, warn?: Function}, mirror?: string, fetchImpl?: Function, retryDelaysMs?: number[], freeBytes?: Function}} [opts]
+   * @param {{log?: {info?: Function, warn?: Function}, mirror?: string, mirrors?: string[], fetchImpl?: Function, retryDelaysMs?: number[], freeBytes?: Function}} [opts]
    */
   constructor(dataDir, opts = {}) {
     this.dataDir = dataDir
     this.opts = opts
-    this.mirror = (opts.mirror || DEFAULT_MIRROR).replace(/\/+$/, '')
+    // 镜像列表：显式 mirror 优先，否则默认 + 官方兜底；failover 时逐个尝试
+    const primary = (opts.mirror || DEFAULT_MIRROR).replace(/\/+$/, '')
+    const extra = (opts.mirrors || []).map((m) => m.replace(/\/+$/, '')).filter((m) => m && m !== primary)
+    this.mirrors = [primary, ...extra]
+    if (!this.mirrors.includes(FALLBACK_MIRROR)) this.mirrors.push(FALLBACK_MIRROR)
+    this.mirror = this.mirrors[0]
     this.progress = null
     this.busy = false
     this.abort = null
@@ -37,6 +44,19 @@ export class ModelDownloadQueue {
 
   mirrorUrl() {
     return this.mirror
+  }
+
+  /** 运行时切换镜像（保存配置后即时生效，无需重启）。 */
+  setMirror(mirror) {
+    const m = String(mirror || '').replace(/\/+$/, '')
+    if (!m) return
+    if (!this.mirrors.includes(m)) this.mirrors.unshift(m)
+    this.mirror = m
+  }
+
+  /** 当前候选镜像列表（GUI 展示 + 测试断言用）。 */
+  listMirrors() {
+    return [...this.mirrors]
   }
 
   /** 当前进度快照（无任务时 null）。 */
@@ -204,27 +224,37 @@ export class ModelDownloadQueue {
   }
 
   /** 下载单文件到最终路径（含续传与校验），返回该文件贡献的字节数。
-   *  单文件失败自动重试（默认 2 次）+ 重试缓存键：镜像 CDN 存在污染缓存窗口
-   *  （同一 URL 确定性拿到错误字节），每次重试追加 ?dshmem-retry=N 绕开缓存键。
+   *  - 镜像 failover：当前镜像所有重试耗尽后自动切下一个镜像（主镜像 hf-mirror.com 失败
+   *    → 官方 huggingface.co 兜底），全部耗尽才抛错；
    *  - sha256 失配：downloadFileOnce 已删除断点 → 从零重下；
    *  - 数量不齐/网络错误：断点保留 → Range 续传重试；
    *  - 取消：立即上抛不重试。 */
   async downloadFile(entry, f, dir, onBytes) {
     const delays = this.opts.retryDelaysMs ?? [1000, 3000]
     let lastErr
-    for (let attempt = 0; ; attempt += 1) {
-      if (this.progress?.phase === 'cancelled') throw new Error('已取消')
-      try {
-        return await this.downloadFileOnce(entry, f, dir, attempt, onBytes)
-      } catch (err) {
-        lastErr = err
-        if (this.progress?.phase === 'cancelled') throw err
-        if (attempt >= delays.length) throw err
-        const msg = err instanceof Error ? err.message : String(err)
-        this.log?.warn?.(`[memory-manager] 文件 ${f.path} 第 ${attempt + 1} 次尝试失败（${msg}），${delays[attempt]}ms 后自动重试（换缓存键）`)
-        await new Promise((r) => setTimeout(r, delays[attempt]))
+    // 每个镜像一轮重试；轮间换镜像（failover）
+    for (let mi = 0; mi < this.mirrors.length; mi += 1) {
+      this.mirror = this.mirrors[mi]
+      for (let attempt = 0; ; attempt += 1) {
+        if (this.progress?.phase === 'cancelled') throw new Error('已取消')
+        try {
+          return await this.downloadFileOnce(entry, f, dir, attempt, onBytes)
+        } catch (err) {
+          lastErr = err
+          if (this.progress?.phase === 'cancelled') throw err
+          if (attempt >= delays.length) break
+          const msg = err instanceof Error ? err.message : String(err)
+          this.log?.warn?.(`[memory-manager] 文件 ${f.path} 镜像 ${this.mirror} 第 ${attempt + 1} 次尝试失败（${msg}），${delays[attempt]}ms 后自动重试（换缓存键）`)
+          await new Promise((r) => setTimeout(r, delays[attempt]))
+        }
+      }
+      // 当前镜像所有重试耗尽 → 换下一个镜像（保留断点续传）
+      if (mi < this.mirrors.length - 1) {
+        const msg = lastErr instanceof Error ? lastErr.message : String(lastErr)
+        this.log?.warn?.(`[memory-manager] 文件 ${f.path} 镜像 ${this.mirror} 重试耗尽，切换 ${this.mirrors[mi + 1]}（${msg}）`)
       }
     }
+    throw lastErr ?? new Error('下载失败')
   }
 
   /** 单次尝试：续传探测 → fetch（attempt>0 追加缓存键参数）→ 落盘 → 尺寸 + sha256 校验 → rename。 */

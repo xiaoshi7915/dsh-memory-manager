@@ -40,6 +40,7 @@
     "p9": "node scripts/p9-acceptance.mjs",
     "layered": "node scripts/layered-endpoints-test.mjs",
     "gui:layered": "node scripts/gui-layered-logic-test.mjs",
+    "layer-search": "node scripts/layer-search-test.mjs",
     "observability": "node scripts/agent-observability-test.mjs",
     "serve": "node src/server/index.mjs",
     "preview": "node src/server/index.mjs"

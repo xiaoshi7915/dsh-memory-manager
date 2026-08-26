@@ -209,10 +209,11 @@ export async function distillPersona(engine, family, scenes = [], { llm = null }
  * 档位 gating（与 plugin 捕获一致）：off 跳过；chat/work 强制；auto 由调用方决定让位。
  * @param {import('./index.mjs').MemoryEngine} engine
  * @param {string} sessionId
- * @param {{llm?: Function, family?: string, turns?: {role:string,content:string}[]}} opts
+ * @param {{llm?: Function, family?: string, turns?: {role:string,content:string}[], skipL0?: boolean}} opts
+ *   skipL0=true 时跳过 L0 落盘（供事件级 L0 自动捕获的调用方复用，避免重复写对话）。
  * @returns {Promise<{l0:{file:string,appended:number}, l1:{extracted:number}, l2:{scenes:number}, l3:{written:boolean}}>}
  */
-export async function runDistill(engine, sessionId, { llm = null, family = 'chat', turns = null } = {}) {
+export async function runDistill(engine, sessionId, { llm = null, family = 'chat', turns = null, skipL0 = false } = {}) {
   const f = isFamily(family) ? family : 'chat'
   // 轮次来源：调用方显式给，否则读短期窗口
   let srcTurns = turns
@@ -223,10 +224,59 @@ export async function runDistill(engine, sessionId, { llm = null, family = 'chat
     })
     srcTurns = recent.messages
   }
-  const l0 = await persistL0(engine, sessionId, srcTurns)
+  const l0 = skipL0 ? { file: '', appended: 0 } : await persistL0(engine, sessionId, srcTurns)
   const l1 = await extractL1(engine, sessionId, srcTurns, { llm, family: f })
   const l2 = await distillScenes(engine, f, l1.memories, { llm })
   const l3 = await distillPersona(engine, f, l2.paths.map((p) => ({ name: path.basename(p, '.md'), summary: '' })), { llm })
   engine.log?.info?.(`[memory-manager] 蒸馏管线完成（会话 ${sessionId}，family=${f}，L0=${l0.appended} L1=${l1.extracted} L2=${l2.scenes} L3=${l3.written}）`)
   return { l0, l1, l2, l3 }
+}
+
+/**
+ * 自持生产线（卸载 dsh-layered-memory 后的自动 L2/L3）：从长期库读已沉淀的 L1
+ * （source='distill'/'summary'/'summary-llm'，family 编码在 tags），按 family 跑 L2 场景 + L3 画像。
+ * 增量游标（baseDir/auto-distill-marker.json）：首次运行回填全部 L1，之后仅处理 created_at 大于游标的新 L1，
+ * 避免重复生成场景；游标在蒸馏完成后推进（失败不推进）。
+ * @param {import('./index.mjs').MemoryEngine} engine
+ * @param {{llm?: Function, minMemories?: number}} opts
+ * @returns {Promise<{chat:{scenes:number,written:boolean,n:number}, work:{scenes:number,written:boolean,n:number}}>}
+ */
+export async function autoDistillFromStore(engine, { llm = null, minMemories = 3 } = {}) {
+  const fams = { chat: { list: [], scenes: 0, written: false, n: 0 }, work: { list: [], scenes: 0, written: false, n: 0 } }
+  if (!llm || typeof llm !== 'function') return fams
+  const markerPath = path.join(engine.baseDir, 'auto-distill-marker.json')
+  let cursor = 0
+  try { cursor = Number(JSON.parse(await fsp.readFile(markerPath, 'utf8')).lastAt) || 0 } catch { /* 无游标 → 回填 */ }
+  let newest = cursor
+  for (const r of engine.store.list()) {
+    if (r.source !== 'distill' && r.source !== 'summary' && r.source !== 'summary-llm') continue
+    const t = Number(r.created_at) || 0
+    if (t <= cursor) continue
+    const famTag = (r.tags || []).find((x) => x.startsWith('family:'))
+    const fam = famTag ? famTag.slice(7) : 'chat'
+    if (fam !== 'chat' && fam !== 'work') continue
+    fams[fam].list.push({
+      content: engine.decryptContent(r),
+      type: (r.tags || []).find((x) => x.startsWith('type:'))?.slice(5) || 'unknown',
+      priority: Math.max(1, Math.min(100, (r.importance ?? 5) * 10)),
+    })
+    if (t > newest) newest = t
+  }
+  let produced = false
+  for (const family of ['chat', 'work']) {
+    const g = fams[family]
+    g.n = g.list.length
+    if (g.n < minMemories) continue
+    const l2 = await distillScenes(engine, family, g.list, { llm })
+    const l3 = await distillPersona(engine, family, l2.paths.map((p) => ({ name: path.basename(p, '.md'), summary: '' })), { llm })
+    g.scenes = l2.scenes
+    g.written = l3.written
+    if (l2.scenes > 0 || l3.written) produced = true
+    engine.log?.info?.(`[memory-manager] 自动蒸馏 L2/L3（family=${family}，新增 L1=${g.n}，L2=${l2.scenes}，L3=${l3.written}）`)
+  }
+  // 有产出才推进游标（纯失败/无内容不推进，下次可重试）
+  if (produced && newest > cursor) {
+    await fsp.writeFile(markerPath, JSON.stringify({ lastAt: newest }), 'utf8')
+  }
+  return fams
 }

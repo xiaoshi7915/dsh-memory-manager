@@ -227,6 +227,8 @@ html[data-theme='light'] .btn.danger { color: #fff; }
 .badge.imp { background: #fff3e0; color: #b45309; }
 .badge.global { background: #e8f5ee; color: var(--ok); }
 .badge.session { background: var(--accent-soft); color: var(--accent); }
+.badge.layer { background: rgba(99,91,255,.13); color: #6367ff; }
+html[data-theme='dark'] .badge.layer { background: rgba(99,91,255,.2); color: #9aa2ff; }
 html[data-theme='dark'] .badge.imp { background: #3a2a10; color: #f5b95c; }
 html[data-theme='dark'] .badge.global { background: #123325; color: #57d4a2; }
 

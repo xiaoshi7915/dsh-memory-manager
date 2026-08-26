@@ -58,6 +58,59 @@ const check = (name, cond, detail = '') => { results.push({ name, ok: !!cond });
   await e.close()
 }
 
+// ---- v2 全量导入导出（L0 对话 / L1 记忆 / L2 场景 / L3 画像 / 日志） ----
+{
+  const { MemoryEngine } = await import('../src/core/index.mjs')
+  const e = await MemoryEngine.create({ config: { storage: { encryption_enabled: false } } })
+  const fsp = await import('node:fs/promises')
+  const path = await import('node:path')
+  // 造种子数据：L1 + L0 对话 + L2 场景 + L3 画像 + 日志
+  await e.addMemory({ sessionId: 's1', content: '全量导出记忆A', importance: 6 })
+  const { persistL0, sceneFileContent, safeSceneName } = await import('../src/core/distill.mjs')
+  await persistL0(e, 's1', [
+    { role: 'user', content: '对话原文1' },
+    { role: 'assistant', content: '对话原文2' },
+  ])
+  const sceneDir = path.join(e.baseDir, 'scenes', 'chat')
+  await fsp.mkdir(sceneDir, { recursive: true })
+  await fsp.writeFile(path.join(sceneDir, 'scene-1.md'), sceneFileContent({ summary: '场景摘要X', body: '场景正文X' }), 'utf8')
+  await fsp.writeFile(path.join(e.baseDir, 'persona-chat.md'), '## 用户画像\n- 全量画像', 'utf8')
+  e.log?.info('全量导出测试日志行')
+  // 导出
+  const backup = await e.exportBackup({ format: 'json' })
+  const parsed = JSON.parse(backup)
+  check('v2 导出 version=2', parsed.version === 2, String(parsed.version))
+  check('v2 导出含 L1 记忆', parsed.memories.some((m) => m.content.includes('全量导出记忆A')))
+  check('v2 导出含 L0 对话', parsed.conversations.some((c) => c.content.includes('对话原文1')), JSON.stringify(parsed.conversations))
+  check('v2 导出含 L2 场景', parsed.scenes.chat.some((s) => s.name === 'scene-1' && s.content.includes('场景正文X')), JSON.stringify(parsed.scenes.chat))
+  check('v2 导出含 L3 画像', (parsed.personas.chat || '').includes('全量画像'))
+  check('v2 导出含日志', parsed.logs.some((l) => l.includes('全量导出测试日志行')))
+  check('v2 counts 正确', parsed.counts.conversations === 2 && parsed.counts.scenes.chat === 1 && parsed.counts.personas === 1 && parsed.counts.logs >= 1, JSON.stringify(parsed.counts))
+  // 导入到全新引擎 → 全量还原（显式新 baseDir，避免与 e 同目录锁冲突）
+  const base2 = mkdtempSync(join(tmpdir(), 'dsh-mem-h2-imp-'))
+  const e2 = await MemoryEngine.create({ baseDir: base2, config: { storage: { encryption_enabled: false } } })
+  const r = await e2.importBackup(backup, { mode: 'merge' })
+  check('v2 导入 L1 记忆', r.imported >= 1, JSON.stringify(r))
+  check('v2 导入 L0 对话', r.conversations === 2, `c=${r.conversations}`)
+  check('v2 导入 L2 场景', r.scenes === 1, `s=${r.scenes}`)
+  check('v2 导入 L3 画像', r.personas === 1, `p=${r.personas}`)
+  check('v2 导入日志', r.logs >= 1, `l=${r.logs}`)
+  // 还原后可读（场景/画像/对话落盘）
+  const sc2 = await e2.layered?.scenes?.({ family: 'chat' })
+  const scenesSelf = await import('../src/core/self-layered.mjs')
+  const selfLr = new scenesSelf.SelfLayerReader({ baseDir: e2.baseDir })
+  const scList = selfLr.scenes({ family: 'chat' })
+  check('v2 导入后 L2 场景可读', scList.items.some((x) => x.name === 'scene-1' && x.summary === '场景摘要X'), JSON.stringify(scList.items))
+  const scene1 = selfLr.scene({ family: 'chat', name: 'scene-1' })
+  check('v2 导入后 L2 场景正文可读', scene1.content.includes('场景正文X'), scene1.content?.slice(0, 50))
+  const pers2 = selfLr.persona({ family: 'chat' })
+  check('v2 导入后 L3 画像可读', pers2.content.includes('全量画像'))
+  const l0_2 = selfLr.l0({ session: 's1' })
+  check('v2 导入后 L0 对话可读', l0_2.total === 2, `l0=${l0_2.total}`)
+  selfLr.close()
+  await e.close(); await e2.close()
+}
+
 // ---- 🔴5 嵌入降级自愈 ----
 {
   const { MemoryEngine } = await import('../src/core/index.mjs')

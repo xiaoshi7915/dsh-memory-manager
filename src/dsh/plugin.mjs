@@ -13,6 +13,7 @@ import { HANDLERS } from '../tools/handlers.mjs'
 import { MM_NAMES, LEGACY_NAMES } from '../tools/names.mjs'
 import { countTokens } from '../core/tokenizer.mjs'
 import { attachRoutes, serveGuiHandler } from '../server/routes.mjs'
+import { persistL0 } from '../core/distill.mjs'
 
 export const name = 'dsh-memory-manager'
 export const inject = ['tools', 'webServer', 'sessions']
@@ -469,6 +470,8 @@ export function apply(ctx, config = {}) {
   // 串行链处理，避免并发投递（ctx.parallel）下检查-摘要-更新出现竞态导致重复摘要。
   const lastSummarizedCount = new Map() // sessionId -> 上次摘要时的消息条数
   const sessionChains = new Map() // sessionId -> Promise（串行化链尾）
+  const lastAutoDistillAt = new Map() // sessionId -> 上次自动蒸馏时间戳（冷却）
+  const DISTILL_COOLDOWN_MS = 10 * 60 * 1000 // 自动蒸馏冷却 10 分钟
   // 🔴8 Map 有界清理：会话链/节流条数超 512 后逐出最老一半（Map 迭代即插入序），
   // 避免长驻进程里会话无限累积（每个会话一条链 + 一个计数，永不清理 = 内存泄漏）。
   const pruneSessionMaps = () => {
@@ -520,6 +523,12 @@ export function apply(ctx, config = {}) {
     // P2 让位：layered 在场（auto）时短期捕获关闭，避免同一对话被双方各存一份
     if (role && content && captureOn) {
       await engine.shortTerm.append(sid, role, content, { maxLines: engine.config.short_term.max_messages })
+      // 自持生产线（L0）：layered 缺席时事件级落盘 L0 对话（等同 layered 的 l0_conversations 全量捕获）
+      if (!eventMode.layered) {
+        try {
+          await persistL0(engine, sid, [{ role, content, time: Date.now() }])
+        } catch { /* L0 落盘失败不阻断主流程 */ }
+      }
     }
     // P2 让位：layered 在场（auto）或 off 时自动摘要关闭（后者仍保留短期捕获）
     if (event.type === 'user/message' && summarizeOn) {
@@ -528,8 +537,29 @@ export function apply(ctx, config = {}) {
       const prev = lastSummarizedCount.get(sid) ?? 0
       if (threshold > 0 && count >= threshold && count - prev >= threshold) {
         try {
-          await engine.summarize(sid, { count, llm: llmSummarize })
+          const mode = engine.getMode(sid)
+          const family = mode === 'work' ? 'work' : 'chat'
+          await engine.summarize(sid, { count, llm: llmSummarize, family })
           lastSummarizedCount.set(sid, count)
+          // 自持生产线（L2/L3）：layered 缺席时摘要成功后按冷却触发自动蒸馏（读库 L1 → L2/L3）
+          if (!eventMode.layered) {
+            const now = Date.now()
+            const last = lastAutoDistillAt.get(sid) ?? 0
+            if (now - last >= DISTILL_COOLDOWN_MS) {
+              try {
+                const r = await engine.autoDistill({ llm: llmSummarize, minMemories: 3 })
+                lastAutoDistillAt.set(sid, Date.now())
+                const chat = r?.chat?.scenes ?? 0
+                const work = r?.work?.scenes ?? 0
+                if (chat > 0 || work > 0) {
+                  console.log(`[dsh-memory-manager] 自动蒸馏完成（L2：chat=${chat} work=${work}）`)
+                }
+              } catch (e) {
+                lastAutoDistillAt.set(sid, Date.now()) // 失败也进入冷却，避免每次摘要都重试打爆 LLM
+                console.warn(`[dsh-memory-manager] 自动蒸馏失败（已冷却 ${DISTILL_COOLDOWN_MS / 60000} 分钟）: ${e?.message ?? e}`)
+              }
+            }
+          }
         } catch (e) {
           // 失败也推进节流，避免后续每条消息都重试打爆 LLM
           lastSummarizedCount.set(sid, count)

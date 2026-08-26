@@ -173,6 +173,51 @@ const check = (name, cond, detail = '') => { results.push({ name, ok: !!cond });
   const src = readFileSync(new URL('../src/dsh/plugin.mjs', import.meta.url), 'utf8')
   check('8 mm_distill 工具注册', src.includes("name: MM_NAMES.distill"))
   check('8 档位 gating 保留', src.includes("mode !== 'off'"))
+  check('8 自动 L0 捕获接入（persistL0）', src.includes('persistL0(engine, sid'))
+  check('8 自动蒸馏接入（autoDistill）', src.includes('engine.autoDistill('))
+}
+
+// ---- 9. 自持生产线：autoDistillFromStore 增量游标 + summarize family tag ----
+{
+  const { MemoryEngine } = await import('../src/core/index.mjs')
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const base9 = mkdtempSync(join(tmpdir(), 'dsh-mem-distill-auto-'))
+  const e = await MemoryEngine.create({ baseDir: base9, config: { storage: { encryption_enabled: false } } })
+  const fsp = await import('node:fs/promises')
+  const { existsSync } = await import('node:fs')
+  // LLM mock：L2 场景生成 + L3 画像生成
+  const fakeLlm = async (text) => {
+    if (text.includes('记忆整合助手')) {
+      return '[{"scene_name":"自动场景一","summary":"自动场景摘要","content":"自动场景正文"}]'
+    }
+    return '## 自动画像\n- 基于 L1 生成'
+  }
+  // 造 L1（source=summary + family:chat 标签）
+  await e.addMemory({ sessionId: 's1', content: '【对话摘要】偏好用 Python 做数据分析', importance: 6, source: 'summary', tags: ['摘要', 'l1', 'family:chat'] })
+  await e.addMemory({ sessionId: 's1', content: '【对话摘要】项目用 TypeScript', importance: 5, source: 'summary', tags: ['摘要', 'l1', 'family:chat'] })
+  await e.addMemory({ sessionId: 's1', content: '【对话摘要】团队遵循双周评审', importance: 6, source: 'summary', tags: ['摘要', 'l1', 'family:chat'] })
+  // 首次 autoDistill → 回填全部 → 生成 L2/L3
+  const r1 = await e.autoDistill({ llm: fakeLlm, minMemories: 3 })
+  check('9 首次自动蒸馏产出 L2', r1.chat.scenes >= 1, JSON.stringify(r1.chat))
+  check('9 首次自动蒸馏产出 L3', r1.chat.written === true)
+  const scenePath = join(base9, 'scenes', 'chat', '自动场景一.md')
+  check('9 L2 场景文件落盘', existsSync(scenePath))
+  const personaPath = join(base9, 'persona-chat.md')
+  check('9 L3 画像文件落盘', existsSync(personaPath))
+  const marker = JSON.parse(await fsp.readFile(join(base9, 'auto-distill-marker.json'), 'utf8'))
+  check('9 游标已写入', typeof marker.lastAt === 'number' && marker.lastAt > 0)
+  // 第二次（无新增 L1）→ 无新产出（增量）
+  const r2 = await e.autoDistill({ llm: fakeLlm, minMemories: 3 })
+  check('9 无新增时不重复蒸馏', r2.chat.scenes === 0 && r2.chat.written === false, JSON.stringify(r2.chat))
+  // 新增 L1 → 只处理增量（需 ≥ minMemories=3）
+  await e.addMemory({ sessionId: 's1', content: '【对话摘要】新增事实一', importance: 5, source: 'summary', tags: ['摘要', 'l1', 'family:chat'] })
+  await e.addMemory({ sessionId: 's1', content: '【对话摘要】新增事实二', importance: 5, source: 'summary', tags: ['摘要', 'l1', 'family:chat'] })
+  await e.addMemory({ sessionId: 's1', content: '【对话摘要】新增事实三', importance: 5, source: 'summary', tags: ['摘要', 'l1', 'family:chat'] })
+  const r3 = await e.autoDistill({ llm: fakeLlm, minMemories: 3 })
+  check('9 新增 L1 后再次产出', r3.chat.scenes >= 1, JSON.stringify(r3.chat))
+  await e.close()
 }
 
 const passed = results.filter((r) => r.ok).length

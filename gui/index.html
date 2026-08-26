@@ -222,6 +222,12 @@
                 <button class="btn sm" id="md-switch" type="button">切换</button>
                 <span class="hint" id="md-source-status"></span>
               </div>
+              <div class="row">
+                <span class="label">下载镜像</span>
+                <input id="md-mirror" type="text" value="https://hf-mirror.com" style="width:260px" placeholder="https://hf-mirror.com 或 https://huggingface.co" />
+                <button class="btn sm" id="md-mirror-save" type="button">保存</button>
+                <span class="hint">国内默认 hf-mirror.com（可达），可改回官方 huggingface.co；下载自动失败切换兜底镜像</span>
+              </div>
               <div class="hint" style="margin-top:6px">切换 local 需先下载并选用下方模型；切换会触发全量重建索引（维度变化）。remote 需先在上方「嵌入模型」配置 API Key。</div>
             </div>
             <div class="settings-group">
@@ -247,7 +253,7 @@
           <h3>⬇️ 导出备份</h3>
           <div class="f-row">
             <label class="field"><span>格式</span>
-              <select id="ex-format"><option value="json">JSON（含版本/统计头）</option><option value="jsonl">JSONL（每行一条）</option></select>
+              <select id="ex-format"><option value="json">JSON（全量：记忆 + L0对话/L2场景/L3画像/日志）</option><option value="jsonl">JSONL（仅记忆，每行一条）</option></select>
             </label>
             <div style="display:flex;align-items:flex-end"><button class="btn" id="ex-btn">导出并下载</button></div>
           </div>
@@ -256,7 +262,7 @@
           <h3>⬆️ 导入备份</h3>
           <div class="dropzone" id="dz">
             <div style="font-size:26px">📂</div>
-            点击选择文件，或将 JSON / JSONL 备份拖放到此处
+            点击选择文件，或将 JSON / JSONL 备份拖放到此处<br><span class="hint">JSON 全量备份会还原 记忆 + L0 对话 + L2 场景 + L3 画像 + 日志</span>
             <input type="file" id="dz-file" accept=".json,.jsonl,application/json" style="display:none" />
           </div>
           <div class="f-row" style="align-items:flex-end">

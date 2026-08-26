@@ -14,14 +14,14 @@
 | GET | `/api/memory/memories/:id` | 单条详情（完整内容） | — | 单条 MemoryRecord（content 解密后完整文本） |
 | DELETE | `/api/memory/memories/:id` | 删除单条 | — | `{"deleted_count":1,"affected_sessions":[...],"freed_tokens":N}` |
 | POST | `/api/memory/memories/delete` | 条件批量删除 | `{"ids":[...]? ,"conditions":{session_id?,tag?,is_global?,older_than?,importance_le?}}` | `{"deleted_count":N,"affected_sessions":[...],"freed_tokens":N}` |
-| POST | `/api/memory/search` | 语义检索（**P3：支持 offset 分页**；Top-K 即每页条数，召回池封顶 100） | `{"query":"...","top_k":5,"threshold":0.75,"session_id":"...","include_global":true,"offset":0}` | `{"results":[{id,content,score,session_id,timestamp,is_global}],"total":N,"latency_ms":45,"page":{offset,limit,total}}` |
+| POST | `/api/memory/search` | 语义检索（**P3：支持 offset 分页**；Top-K 即每页条数；`scope` 缺省 `all`） | `{"query":"...","top_k":5,"threshold":0.75,"session_id":"...","include_global":true,"offset":0,"scope":"all"}` | `{"results":[{id,content,score,session_id,timestamp,is_global,source,layer,isLayer?}],"total":N,"latency_ms":45,"page":{offset,limit,total}}`；`scope="all"` 并入 L0 对话/L2 场景/L3 画像/日志（`isLayer=true`，`layer=l0|l2|l3|log`）；`scope="memory"` 仅长时记忆 |
 | GET | `/api/memory/recent` | 短期记忆上下文 | query：`session`、`n` | `{"messages":[{"role","content"}],"token_count":2048,"window_size":10,"truncated":false}` |
 | POST | `/api/memory/summarize` | 生成摘要并入库 | `{"session_id":"...","count":24}` | `{"summary":"...","memory_id":"<uuid>","compressed_from":24,"saved_tokens":1800}` |
 | PATCH | `/api/memory/memories/:id/importance` | 修改重要性 | `{"score":9}` | `{"memory_id":"<uuid>","old_score":5,"new_score":9}` |
-| GET | `/api/memory/config` | 读取配置 | — | 完整 config 对象（含默认值） |
+| GET | `/api/memory/config` | 读取配置 | — | 完整 config 对象（含默认值；`long_term.mirror` 下载镜像） |
 | POST | `/api/memory/config` | 保存配置 | 部分或全部配置对象 | `{"saved":true,"config":{...}}` |
-| GET | `/api/memory/export?format=json|jsonl` | 下载备份 | — | 文本：备份 JSON 或 JSONL（`Content-Disposition: attachment`） |
-| POST | `/api/memory/import` | 上传恢复 | `{"text":"...","mode":"merge|replace"}` | `{"imported":N,"skipped":N,"failed":N}` |
+| GET | `/api/memory/export?format=json|jsonl` | 下载备份 | — | 文本：JSON=**v2 全量**（memories + conversations + scenes + personas + logs）或 JSONL=仅记忆（`Content-Disposition: attachment`） |
+| POST | `/api/memory/import` | 上传恢复 | `{"text":"...","mode":"merge|replace"}` | `{"imported":N,"skipped":N,"failed":N,"conversations":N,"scenes":N,"personas":N,"logs":N}`（v2 全量含各层计数） |
 | POST | `/api/memory/cleanup` | 手动执行清理（TTL+超限） | — | `{"expired":N,"evicted":N,"last_compacted":"..."}` |
 
 ## 认证

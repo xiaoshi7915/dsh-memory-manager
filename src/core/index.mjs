@@ -78,7 +78,7 @@ export class MemoryEngine {
       // P7 嵌入源：off/remote/local 三态（embedding-source.json）+ 模型下载器
       engine.embeddingSource = new EmbeddingSourceStore(baseDir)
       await engine.embeddingSource.init()
-      engine.downloader = new ModelDownloadQueue(baseDir, { log: engine.log || null })
+      engine.downloader = new ModelDownloadQueue(baseDir, { log: engine.log || null, mirror: engine.config.long_term.mirror || 'https://hf-mirror.com' })
       engine.embedding = new EmbeddingProvider({
         model: engine.config.long_term.embedding_model,
         apiKey: engine.config.long_term.openai_api_key ?? '',
@@ -310,6 +310,12 @@ export class MemoryEngine {
     return runDistill(this, sessionId ?? 'default', opts)
   }
 
+  /** 自持生产线：从长期库已沉淀 L1 自动整合 L2/L3（卸载 layered 后自动调用）。 */
+  async autoDistill(opts = {}) {
+    const { autoDistillFromStore } = await import('./distill.mjs')
+    return autoDistillFromStore(this, opts)
+  }
+
   /** 删除：按 ids 或条件。 */
   async deleteMemory(sessionId, { ids, conditions, allSessions = false } = {}) {
     // 安全守卫：必须显式给出删除目标（ids 或非空 conditions），
@@ -400,6 +406,10 @@ export class MemoryEngine {
       }
     }
     this.config = await saveConfigImpl(this.baseDir, patch)
+    // 下载镜像冷键之外的运行时热更新：保存镜像后下载器立即切源（无需重启）
+    if (typeof patch?.long_term?.mirror === 'string' && this.downloader) {
+      this.downloader.setMirror(patch.long_term.mirror)
+    }
     // 嵌入配置是"冷键"：变更后运行时重建提供者（否则 config 说新模型、实际仍用旧模型重嵌入）。
     // 加密主密码/开关仍属需重启类（涉及既有密文的派生密钥，已由上方守卫拦截变更）。
     if (patch?.long_term && ['embedding_model', 'embedding_model_id', 'openai_api_key'].some((k) => patch.long_term[k] !== undefined)) {

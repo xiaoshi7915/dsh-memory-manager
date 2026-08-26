@@ -1,11 +1,111 @@
 /**
  * 语义/混合检索：向量分（余弦）+ 关键词分（词项重叠），融合打分。
  * 会话隔离：结果仅含当前会话或 is_global（且 global_memory.enabled）。
+ * 全层检索（scope='all'）：额外并入 L0 对话 / L2 场景 / L3 画像 / 日志 的关键词命中，
+ * 结果带 source/layer 标记（P4 可观测），GUI 语义检索默认全层。
  * @module src/core/search
  */
 
 import { countTokens } from './tokenizer.mjs'
 import { tokenizeTerms } from './tokenizer.mjs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+/** 关键词对单文本打分（词项重叠，0..1）；queryTerms 为空返回 null。 */
+function keywordScoreFor(text, queryTerms, queryRaw) {
+  if (!text || queryTerms.length === 0) return null
+  const toks = tokenizeTerms(text)
+  if (toks.length === 0) return null
+  const qset = new Set(queryTerms)
+  let common = 0
+  for (const t of toks) if (qset.has(t)) common += 1
+  if (common === 0) return null
+  const recall = common / toks.length
+  const coverage = common / Math.min(qset.size, toks.length)
+  let kw = 0.5 * recall + 0.5 * coverage
+  const qn = String(queryRaw || '').replace(/\s+/g, '')
+  if (qn.length >= 2 && text.replace(/\s+/g, '').includes(qn)) kw += 0.3
+  return Math.min(1, kw)
+}
+
+/**
+ * 全层关键词检索（L0/L2/L3/日志）：scope='all' 时并入主结果。
+ * @param {import('./index.mjs').MemoryEngine} engine
+ * @param {string} query
+ * @returns {Array<{content:string, score:number, source:string, layer:string, session_id:string, timestamp:number}>}
+ */
+export function searchLayers(engine, query) {
+  const queryTerms = tokenizeTerms(query)
+  const out = []
+  const baseDir = engine.baseDir
+  if (queryTerms.length === 0) return out
+  const push = (content, layer, source, session_id, timestamp) => {
+    const sc = keywordScoreFor(content, queryTerms, query)
+    if (sc == null) return
+    out.push({ content: content.slice(0, 2000), score: sc, source, layer, session_id, timestamp })
+  }
+  // L0 对话（conversations/*.jsonl）
+  const conv = join(baseDir, 'conversations')
+  try {
+    for (const f of readdirSync(conv).filter((x) => x.endsWith('.jsonl'))) {
+      for (const line of readFileSync(join(conv, f), 'utf8').split('\n')) {
+        if (!line.trim()) continue
+        try {
+          const r = JSON.parse(line)
+          push(r.content || '', 'l0', 'conversation', r.session_id || 'default', Number(r.time) || 0)
+        } catch { /* 跳过损坏行 */ }
+      }
+    }
+  } catch { /* 无对话 */ }
+  // L2 场景
+  for (const family of ['chat', 'work']) {
+    const dir = join(baseDir, 'scenes', family)
+    let files = []
+    try { files = readdirSync(dir).filter((x) => x.endsWith('.md')) } catch { continue }
+    for (const f of files) {
+      try {
+        const md = readFileSync(join(dir, f), 'utf8')
+        // 剥 META 前块，保留正文
+        const body = md.split('-----META-END-----').slice(1).join('').trim()
+        if (body) push(body, 'l2', 'scene', 'default', 0)
+      } catch { /* 跳过 */ }
+    }
+  }
+  // L3 画像
+  for (const family of ['chat', 'work']) {
+    const p = join(baseDir, `persona-${family}.md`)
+    try {
+      if (existsSync(p)) {
+        const body = readFileSync(p, 'utf8')
+        if (body.trim()) push(body, 'l3', 'persona', 'default', 0)
+      }
+    } catch { /* 跳过 */ }
+  }
+  // 日志
+  for (const f of ['memory.log', 'memory.log.1']) {
+    const p = join(baseDir, f)
+    try {
+      if (existsSync(p)) {
+        for (const line of readFileSync(p, 'utf8').split('\n')) {
+          if (line.trim()) push(line, 'log', 'memory-log', 'default', 0)
+        }
+      }
+    } catch { /* 跳过 */ }
+  }
+  // 每层最多保留 3 条最高分（避免日志/对话刷屏），排序取 top
+  const perLayer = new Map()
+  for (const r of out) {
+    const k = r.layer
+    if (!perLayer.has(k)) perLayer.set(k, [])
+    perLayer.get(k).push(r)
+  }
+  const capped = []
+  for (const list of perLayer.values()) {
+    list.sort((a, b) => b.score - a.score)
+    capped.push(...list.slice(0, 3))
+  }
+  return capped.sort((a, b) => b.score - a.score)
+}
 
 /**
  * 关键词分数（倒排索引加速）：只对与查询共享词项的候选文档打分，
@@ -115,15 +215,38 @@ export async function search(engine, query, opts = {}) {
   }
 
   results.sort((a, b) => b.score - a.score)
-  const top = results.slice(offset, offset + topK)
+
+  // scope='all'（GUI 语义检索默认）：并入 L0 对话 / L2 场景 / L3 画像 / 日志 关键词命中。
+  // 层结果与长时记忆结果统一按 score 排序、分页，均带 source/layer（P4 可观测）。
+  let layerResults = []
+  if (opts.scope === 'all') {
+    for (const lr of searchLayers(engine, query)) {
+      if (lr.score < threshold) continue
+      layerResults.push({
+        id: `layer:${lr.layer}:${lr.source}:${lr.timestamp}:${lr.content.slice(0, 16)}`,
+        content: lr.content,
+        score: Number(lr.score.toFixed(4)),
+        session_id: lr.session_id,
+        timestamp: lr.timestamp ? new Date(lr.timestamp).toISOString() : '',
+        is_global: false,
+        source: lr.source,
+        layer: lr.layer,
+        isLayer: true,
+      })
+    }
+  }
+
+  const merged = [...results, ...layerResults].sort((a, b) => b.score - a.score)
+  const top = merged.slice(offset, offset + topK)
   for (const r of top) {
+    if (r.isLayer) continue
     const rec = engine.store.get(r.id)
     if (rec) engine.store.touch(rec.id)
   }
   return {
     results: top,
-    total: results.length,
+    total: merged.length,
     latency_ms: Date.now() - t0,
-    page: { offset, limit: topK, total: results.length },
+    page: { offset, limit: topK, total: merged.length },
   }
 }

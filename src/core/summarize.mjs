@@ -60,7 +60,7 @@ export function extractiveSummary(text, { maxChars = 400 } = {}) {
  * 支持可选 LLM 生成式摘要：`opts.llm` 为 async (text) => string，失败时回退抽取式。
  * @param {import('./index.mjs').MemoryEngine} engine
  * @param {string} sessionId
- * @param {{count?: number, llm?: (text: string) => Promise<string|null>}} opts
+ * @param {{count?: number, llm?: (text: string) => Promise<string|null>, family?: string}} opts
  */
 export async function summarizeSession(engine, sessionId, opts = {}) {
   const recent = await engine.shortTerm.getRecent(sessionId, {
@@ -83,9 +83,10 @@ export async function summarizeSession(engine, sessionId, opts = {}) {
   if (!summary) {
     return { summary: '', memory_id: null, compressed_from: 0, saved_tokens: 0, via }
   }
+  const family = opts.family === 'work' ? 'work' : 'chat'
   const result = await engine.addMemory({
     content: `【对话摘要】${summary}`,
-    tags: ['摘要'],
+    tags: ['摘要', 'l1', `family:${family}`],
     importance: 6,
     is_global: false,
     sessionId,

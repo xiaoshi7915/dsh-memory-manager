@@ -309,13 +309,13 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, r)
     return
   }
-  // 检索（P3：支持 offset 分页，page 字段返回 offset/limit/total）
+  // 检索（P3：支持 offset 分页，page 字段返回 offset/limit/total；scope=all 默认并入 L0/L2/L3/日志）
   if (method === 'POST' && rel === 'search') {
     const body = await readJsonBody(req)
     if (!body.query) { sendError(res, 'VALIDATION_ERROR', '缺少 query', 400); return }
     sendJson(res, 200, await engine.search(body.query, {
       topK: body.top_k, threshold: body.threshold, sessionId: body.session_id ?? 'default',
-      includeGlobal: body.include_global, offset: body.offset,
+      includeGlobal: body.include_global, offset: body.offset, scope: body.scope ?? 'all',
     }))
     return
   }

@@ -45,6 +45,8 @@ export const DEFAULT_CONFIG = Object.freeze({
     embedding_model: 'local',
     embedding_model_id: '',
     openai_api_key: '',
+    // 模型下载镜像根（默认国内可达的 hf-mirror.com，可配回官方 huggingface.co；对齐 layered config.embedding.mirror）
+    mirror: 'https://hf-mirror.com',
     hybrid_weight: 0.7,
     // LLM 生成式摘要成本护栏（plugin 钩子消费）
     llm_guardrails: {

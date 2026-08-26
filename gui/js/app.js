@@ -158,18 +158,24 @@ function bindMemCards(box) {
 function memCard(m, { score } = {}) {
   const tags = (m.tags || []).map((t) => `<span class="chip">${esc(t)}</span>`).join(' ')
   const pct = score != null ? Math.round(score * 100) : null
+  const LAYER_LABEL = { l0: 'L0 对话', l1: 'L1 原子', l2: 'L2 场景', l3: 'L3 画像', log: '日志', summary: '摘要', long_term: '长时记忆' }
+  const layerBadge = m.layer ? `<span class="badge layer">${LAYER_LABEL[m.layer] || m.layer}</span>` : ''
+  const impBadge = m.importance != null ? `<span class="badge imp">重要度 ${m.importance}</span>` : ''
+  const sessionBadge = m.is_global ? '<span class="badge global">全局</span>' : (m.session_id ? `<span class="badge session">${esc(m.session_id)}</span>` : '')
   return `
-  <div class="mem" data-id="${esc(m.id)}" data-imp="${Number(m.importance)}">
+  <div class="mem" data-id="${esc(m.id)}" data-imp="${Number(m.importance ?? 0)}">
     <div class="mem-top">
       <div class="mem-content clamped">${esc(m.content)}</div>
     </div>
     <div class="mem-meta">
-      <span class="badge imp">重要度 ${m.importance}</span>
-      ${m.is_global ? '<span class="badge global">全局</span>' : `<span class="badge session">${esc(m.session_id)}</span>`}
+      ${layerBadge}
+      ${impBadge}
+      ${sessionBadge}
       <span>${fmtTime(m.created_at)}</span>
       <span class="spacer" style="flex:1"></span>
       ${pct != null ? `<span class="score-bar" style="width:90px"><div class="score-track"><div class="score-fill" style="width:${pct}%"></div></div></span><span>${(score * 100).toFixed(1)}%</span>` : ''}
     </div>
+    ${m.layer ? `<div class="mem-detail"><div class="d-row"><span>层级</span><span>${esc(m.source || '-')} · ${LAYER_LABEL[m.layer] || m.layer}</span></div></div>` : `
     <div class="mem-detail">
       <div class="d-row"><span>ID</span><code>${esc(m.id)}</code></div>
       <div class="d-row"><span>标签</span>${tags || '<span class="hint">无</span>'}</div>
@@ -179,7 +185,7 @@ function memCard(m, { score } = {}) {
         <button class="btn ghost sm act-imp" data-id="${esc(m.id)}" data-d="-1">重要性-1</button>
         <button class="btn danger sm act-del" data-id="${esc(m.id)}">删除</button>
       </div>
-    </div>
+    </div>`}
   </div>`
 }
 
@@ -280,7 +286,7 @@ async function doSearch(opts = {}) {
     const s = state.search
     s.pageSize = Math.max(1, Math.floor(topK))
     // P3：offset 分页（Top-K 即每页条数）；后端召回池封顶 100，超出部分需提高 Top-K
-    const res = await api.search(query, { top_k: topK, threshold: thr, session_id: sess, include_global: $('#sq-global').checked, offset: s.page * s.pageSize })
+    const res = await api.search(query, { top_k: topK, threshold: thr, session_id: sess, include_global: $('#sq-global').checked, offset: s.page * s.pageSize, scope: 'all' })
     const ms = Math.round(performance.now() - t0)
     s.total = res.total || 0
     if (res.results.length === 0) {
@@ -352,8 +358,13 @@ async function importFile(file) {
       log.textContent += '已确认替换，继续…\n'
     }
     const res = await api.importBackup(text, mode)
-    log.textContent = `读取完成：${file.name}（${text.length} 字符）\n导入 ${res.imported} 条，跳过 ${res.skipped} 条，失败 ${res.failed} 条`
-    toast(`导入完成：${res.imported} 条`)
+    const parts = [`记忆 ${res.imported} 条（跳过 ${res.skipped}，失败 ${res.failed}）`]
+    if (res.conversations != null) parts.push(`L0 对话 ${res.conversations} 条`)
+    if (res.scenes != null) parts.push(`L2 场景 ${res.scenes} 个`)
+    if (res.personas != null) parts.push(`L3 画像 ${res.personas} 份`)
+    if (res.logs != null) parts.push(`日志 ${res.logs} 条`)
+    log.textContent = `读取完成：${file.name}（${text.length} 字符）\n导入结果：${parts.join('，')}`
+    toast(`导入完成：${res.imported} 条记忆${res.conversations ? ` + L0×${res.conversations}` : ''}`)
     clearSearch()
     refreshFilters()
   } catch (e) {
@@ -443,6 +454,7 @@ function formToConfig() {
       embedding_model: $('#st-emb').value,
       embedding_model_id: $('#st-emb-id').value,
       openai_api_key: $('#st-emb-key').value,
+      mirror: $('#md-mirror')?.value?.trim() || 'https://hf-mirror.com',
     },
     storage,
     global_memory: { enabled: $('#st-global').checked },
@@ -454,6 +466,9 @@ async function loadConfig() {
     const c = await api.getConfig()
     state.config = c
     configToForm(c)
+    const mirror = c?.long_term?.mirror || 'https://hf-mirror.com'
+    const mi = $('#md-mirror')
+    if (mi && !mi.dataset.userEdited) mi.value = mirror
   } catch (e) {
     $('#settings-msg').innerHTML = `<div class="alert err">加载配置失败：${esc(e.message)}</div>`
   }
@@ -1106,6 +1121,24 @@ function initEvents() {
   $('#st-cleanup').addEventListener('click', doCleanup)
   $('#st-reindex-btn').addEventListener('click', doReindex)
   $('#ex-btn').addEventListener('click', doExport)
+  // 下载镜像保存：只改 mirror 字段（避免覆盖其他未保存的设置）
+  $('#md-mirror-save')?.addEventListener('click', async () => {
+    const mi = $('#md-mirror')
+    const btn = $('#md-mirror-save')
+    const url = mi.value.trim()
+    if (!/^https?:\/\/.+/.test(url)) { toast('镜像地址需以 http(s):// 开头'); return }
+    mi.dataset.userEdited = '1'
+    btn.disabled = true
+    try {
+      const saved = await api.saveConfig(formToConfig())
+      state.config = saved
+      toast('下载镜像已保存：' + url)
+    } catch (e) {
+      toast('保存镜像失败：' + e.message)
+    } finally {
+      btn.disabled = false
+    }
+  })
 
   // 记忆卡片内的操作按钮（事件委托）
   document.addEventListener('click', async (e) => {
