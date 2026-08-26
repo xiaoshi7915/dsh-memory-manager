@@ -365,6 +365,53 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, { session_id: r.session_id, mode: r.mode, old_mode: r.old_mode, default_mode: engine.modes?.default ?? 'auto' })
     return
   }
+  // ---- P7 模型下载 / 嵌入源切换 ----
+  if (method === 'GET' && rel === 'models') {
+    const [models, source, progress] = await Promise.all([
+      engine.listModels(),
+      Promise.resolve(engine.embeddingSource?.get() ?? { source: 'remote', activeModel: null }),
+      Promise.resolve(engine.modelDownloadProgress()),
+    ])
+    sendJson(res, 200, { models, source, progress, embedding: engine.embedding.status() })
+    return
+  }
+  if (method === 'POST' && rel === 'models/download') {
+    const body = await readJsonBody(req)
+    const id = body?.modelId || body?.id
+    if (!id) { sendError(res, 'VALIDATION_ERROR', '缺少 modelId', 400); return }
+    if (engine.downloader?.isBusy()) { sendError(res, 'BUSY', '已有下载任务进行中', 409); return }
+    try {
+      const r = await engine.downloadModel(id)
+      sendJson(res, 200, r)
+    } catch (e) {
+      sendError(res, 'DOWNLOAD_ERROR', e?.message ?? String(e), 400)
+    }
+    return
+  }
+  if (method === 'POST' && rel === 'models/cancel') {
+    const cancelled = engine.cancelModelDownload()
+    sendJson(res, 200, { cancelled })
+    return
+  }
+  if (method === 'POST' && rel === 'models/switch') {
+    const body = await readJsonBody(req)
+    const source = body?.source
+    if (!['off', 'remote', 'local'].includes(source)) { sendError(res, 'VALIDATION_ERROR', 'source 必须是 off/remote/local', 400); return }
+    try {
+      const r = await engine.switchEmbeddingSource(source, body?.modelId || null)
+      sendJson(res, 200, r)
+    } catch (e) {
+      sendError(res, e?.code || 'SWITCH_ERROR', e?.message ?? String(e), e?.code === 'VALIDATION_ERROR' ? 400 : 409)
+    }
+    return
+  }
+  if (method === 'DELETE' && rel === 'models') {
+    const id = url.searchParams.get('id')
+    if (!id) { sendError(res, 'VALIDATION_ERROR', '缺少 id', 400); return }
+    const r = await engine.deleteModel(id)
+    sendJson(res, r.ok ? 200 : 409, r)
+    return
+  }
   // 导出
   if (method === 'GET' && rel === 'export') {
     const format = url.searchParams.get('format') === 'jsonl' ? 'jsonl' : 'json'

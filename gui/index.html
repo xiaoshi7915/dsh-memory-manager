@@ -187,6 +187,28 @@
             </div>
             <div style="margin-top:18px"><button class="btn" id="st-save">保存配置</button></div>
           </div>
+          <!-- P7 嵌入源 & 模型下载 -->
+          <div class="card" style="margin-top:16px">
+            <div class="group-title">🎯 嵌入源 & 模型下载</div>
+            <div class="settings-group">
+              <div class="row">
+                <span class="label">嵌入源</span>
+                <select id="md-source" style="width:220px">
+                  <option value="remote">remote（外部 API）</option>
+                  <option value="local">local（本地模型）</option>
+                  <option value="off">off（纯关键词）</option>
+                </select>
+                <button class="btn sm" id="md-switch" type="button">切换</button>
+                <span class="hint" id="md-source-status"></span>
+              </div>
+              <div class="hint" style="margin-top:6px">切换 local 需先下载并选用下方模型；切换会触发全量重建索引（维度变化）。remote 需先在上方「嵌入模型」配置 API Key。</div>
+            </div>
+            <div class="settings-group">
+              <div class="group-title" style="margin-top:8px">本地嵌入模型（白名单，sha256 校验）</div>
+              <div id="md-list"></div>
+              <div id="md-progress" class="hint" style="margin-top:8px; display:none"></div>
+            </div>
+          </div>
         </section>
       </div>
     </main>

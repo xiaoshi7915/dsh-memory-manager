@@ -42,7 +42,7 @@ export async function stats(engine) {
     storage_size_mb: Number(dirSizeMb(engine.baseDir).toFixed(2)),
     last_compacted: engine.lastCompacted ? new Date(engine.lastCompacted).toISOString() : null,
     embedding_model: engine.config.long_term.embedding_model,
-    embedding_status: engine.embedding.status().kind === 'hash' ? 'degraded' : 'completed',
+    embedding_status: ['hash', 'off'].includes(engine.embedding.status().kind) ? 'degraded' : 'completed',
     needs_reindex: engine.needsReindex(),
     decrypt_failed: engine._decryptFailed?.size ?? 0,
     layered_present: engine.layered_present === true,

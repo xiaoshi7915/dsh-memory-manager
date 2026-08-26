@@ -80,6 +80,12 @@ export class MemoryApi {
   // P6 会话档位（manager 自己的模式）
   modeGet(session) { return this.get(`/api/memory/mode${session ? `?session=${encodeURIComponent(session)}` : ''}`) }
   modeSet(session, mode) { return this.put('/api/memory/mode', { session, mode }) }
+  // P7 模型下载 / 嵌入源
+  models() { return this.get('/api/memory/models') }
+  modelDownload(modelId) { return this.post('/api/memory/models/download', { modelId }) }
+  modelCancel() { return this.post('/api/memory/models/cancel', {}) }
+  modelSwitch(source, modelId) { return this.post('/api/memory/models/switch', { source, modelId }) }
+  modelDelete(id) { return this.delete(`/api/memory/models?id=${encodeURIComponent(id)}`) }
   saveConfig(body) { return this.post('/api/memory/config', body) }
   exportBackup(format = 'json') {
     const q = format === 'jsonl' ? '?format=jsonl' : ''

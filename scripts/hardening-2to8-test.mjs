@@ -62,14 +62,14 @@ const check = (name, cond, detail = '') => { results.push({ name, ok: !!cond });
 {
   const { MemoryEngine } = await import('../src/core/index.mjs')
   const { EmbeddingProvider } = await import('../src/core/embedding.mjs')
-  // 直接构造 provider 模拟 openai 失败→降级→恢复
+  // 直接构造 provider 模拟远程嵌入失败→降级→恢复（P7 改名 _embedRemote）
   const p = new EmbeddingProvider({ model: 'openai', apiKey: 'k' })
   await p.init()
-  // 强制失败：把 _embedOpenai 换成抛错
-  p._embedOpenai = async () => { throw new Error('network down') }
+  // 强制失败：把 _embedRemote 换成抛错
+  p._embedRemote = async () => { throw new Error('network down') }
   await p.embed('测试')
   check('🔴5 失败后 degraded=true', p.status().degraded === true)
-  p._embedOpenai = async () => Float32Array.from({ length: 1536 }, () => 0.1)
+  p._embedRemote = async () => Float32Array.from({ length: 1536 }, () => 0.1)
   await p.embed('恢复测试')
   check('🔴5 成功调用后 degraded 复位', p.status().degraded === false, `degraded=${p.status().degraded}`)
   // init 重置

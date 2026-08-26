@@ -57,9 +57,9 @@ export async function search(engine, query, opts = {}) {
 
   const queryVec = await engine.embedding.embed(query)
   const kind = engine.embedding.status().kind
-  // 降级判定：哈希嵌入、API 嵌入降级、或需重建索引（向量为旧模型）时走关键词为主分支
+  // 降级判定：哈希嵌入、API 嵌入降级、需重建索引、或嵌入关闭（off=纯关键词）时走关键词为主分支
   const needsReindex = engine.needsReindex()
-  const degraded = kind === 'hash' || engine.embedding.status().degraded === true || needsReindex
+  const degraded = kind === 'hash' || kind === 'off' || engine.embedding.status().degraded === true || needsReindex
   // 降级（哈希嵌入）会把相似度压缩到较低区间：将配置阈值映射到哈希尺度，
   // 避免真实命中被 0.75 阈值误杀；配置了真实嵌入模型时仍用配置阈值。
   let threshold = opts.threshold ?? engine.config.long_term.similarity_threshold ?? 0.75

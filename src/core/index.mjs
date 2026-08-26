@@ -18,6 +18,9 @@ import { exportBackup, importBackup } from './io.mjs'
 import { stats as collectStats } from './stats.mjs'
 import { withFileLog } from '../util/filelog.mjs'
 import { SessionModeStore } from './modes.mjs'
+import { EmbeddingSourceStore } from './embedding-source.mjs'
+import { ModelDownloadQueue } from './downloader.mjs'
+import { catalogById, MODEL_CATALOG } from './model-catalog.mjs'
 import { loadConfig, saveConfig as saveConfigImpl, embeddingFingerprint, defaultBaseDir, isSharedLegacyDir } from '../config.mjs'
 import { newId, nowMs, clampImportance, MemoryError, assertString, assertOptionalString, assertTags } from './types.mjs'
 import { countTokens, tokenizeTerms } from './tokenizer.mjs'
@@ -71,11 +74,18 @@ export class MemoryEngine {
         keyFile: path.join(baseDir, '.key'),
       })
       await engine.crypto.init()
+      // P7 嵌入源：off/remote/local 三态（embedding-source.json）+ 模型下载器
+      engine.embeddingSource = new EmbeddingSourceStore(baseDir)
+      await engine.embeddingSource.init()
+      engine.downloader = new ModelDownloadQueue(baseDir, { log: engine.log || null })
       engine.embedding = new EmbeddingProvider({
         model: engine.config.long_term.embedding_model,
         apiKey: engine.config.long_term.openai_api_key ?? '',
-        modelId: engine.config.long_term.embedding_model_id,
+        modelId: engine.config.long_term.embedding_model_id || engine.embeddingSource.get().activeModel || '',
         dataDir: path.join(baseDir, 'long_term'),
+        source: engine.embeddingSource.get().source === 'off' ? 'off'
+          : engine.embeddingSource.get().source === 'local' ? 'local'
+            : (engine.config.long_term.embedding_model === 'openai' ? 'remote' : 'local'),
       })
       await engine.embedding.init()
       engine.lifecycle = new Lifecycle(engine)
@@ -270,7 +280,7 @@ export class MemoryEngine {
     return {
       success: true,
       memory_id: id,
-      embedding_status: (this.embedding.status().kind === 'hash' || this.embedding.status().degraded === true) ? 'degraded' : 'completed',
+      embedding_status: (['hash', 'off'].includes(this.embedding.status().kind) || this.embedding.status().degraded === true) ? 'degraded' : 'completed',
       token_cost: tokens,
     }
   }
@@ -411,6 +421,71 @@ export class MemoryEngine {
     return r ?? { session_id: sessionId, mode, old_mode: null }
   }
 
+  /* ---------- P7 模型下载 / 嵌入源切换 ---------- */
+
+  /** 模型目录状态（设置页模型卡）。 */
+  async listModels() {
+    return this.downloader?.listStatus() ?? []
+  }
+
+  /** 当前下载进度快照。 */
+  modelDownloadProgress() {
+    return this.downloader?.getProgress() ?? null
+  }
+
+  /** 启动模型下载（串行队列；忙时拒绝）。 */
+  async downloadModel(id) {
+    return this.downloader?.start(id)
+  }
+
+  /** 取消下载（保留断点）。 */
+  cancelModelDownload() {
+    return this.downloader?.cancel() ?? false
+  }
+
+  /** 删除已下载模型。 */
+  async deleteModel(id) {
+    return this.downloader?.deleteModel(id) ?? { ok: false, error: '下载器未就绪' }
+  }
+
+  /** 切换嵌入源（off/remote/local）。local 需已下载模型；持久化到 embedding-source.json。
+   *  切换后重建当前嵌入提供者；local 且模型/运行时未就绪时降级 hash（不阻断）。
+   *  @returns {{source, model, kind, dim, detail, degraded, needs_reindex}} */
+  async switchEmbeddingSource(source, modelId = null) {
+    if (!['off', 'remote', 'local'].includes(source)) {
+      throw new MemoryError('VALIDATION_ERROR', 'source 必须是 off/remote/local')
+    }
+    if (source === 'local' && !catalogById(modelId)) {
+      throw new MemoryError('VALIDATION_ERROR', `本地嵌入需要有效模型 id（可选：${MODEL_CATALOG.map((m) => m.id).join(', ')}）`)
+    }
+    if (source === 'remote' && !this.config.long_term.openai_api_key) {
+      throw new MemoryError('CONFIG_ERROR', 'remote 嵌入需要先配置 openai_api_key')
+    }
+    await this.embeddingSource.set({ source, activeModel: source === 'local' ? modelId : null })
+    // 重建嵌入提供者（冷键热更新，与 saveConfig 的 embedding 冷键处理一致）
+    this.embedding = new EmbeddingProvider({
+      model: source === 'remote' ? 'openai' : source,
+      apiKey: this.config.long_term.openai_api_key ?? '',
+      modelId: source === 'local' ? modelId : this.config.long_term.embedding_model_id || '',
+      dataDir: path.join(this.baseDir, 'long_term'),
+      source,
+    })
+    await this.embedding.init()
+    // 模型指纹可能变化 → 触发全量重嵌
+    this._needsReindex = this.detectReindexNeeded()
+    const st = this.embedding.status()
+    this.log?.info(`[memory-manager] 嵌入源切换 → ${source}${source === 'local' ? `/${modelId}` : ''}（kind=${st.kind}${st.degraded ? '/降级' : ''}）`)
+    return {
+      source,
+      model: source === 'local' ? modelId : null,
+      kind: st.kind,
+      dim: st.dim,
+      detail: st.detail,
+      degraded: st.degraded,
+      needs_reindex: this._needsReindex,
+    }
+  }
+
   async close() {
     // 🔴2 关闭兜底：取消防抖计时器并做最终向量刷盘，保证防抖期间的脏数据不丢
     if (this._vecFlushTimer) {
@@ -419,6 +494,7 @@ export class MemoryEngine {
     }
     try { await this.persistVectors() } catch { /* 忽略 */ }
     try { await this.modes?.flush() } catch { /* 忽略 */ }
+    try { await this.embeddingSource?.flush() } catch { /* 忽略 */ }
     try { this.store.close() } catch { /* 忽略 */ }
     this.releaseDirLock()
   }

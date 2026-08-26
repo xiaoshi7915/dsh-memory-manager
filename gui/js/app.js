@@ -457,6 +457,8 @@ async function loadConfig() {
   } catch (e) {
     $('#settings-msg').innerHTML = `<div class="alert err">加载配置失败：${esc(e.message)}</div>`
   }
+  // P7 模型卡（与配置同屏刷新）
+  renderModelsCard()
 }
 
 async function saveConfig() {
@@ -475,9 +477,113 @@ async function saveConfig() {
   }
 }
 
+/* P7 嵌入源 & 模型下载卡 */
+let _mdPolling = null
+async function renderModelsCard() {
+  const listBox = $('#md-list')
+  const status = $('#md-source-status')
+  if (!listBox) return
+  try {
+    const r = await api.models()
+    const { models = [], source = 'remote', activeModel = null, progress = null, embedding = {} } = r
+    // 嵌入源状态
+    if (status) {
+      const srcLabel = source === 'off' ? 'off（纯关键词）' : source === 'local' ? `local（${activeModel || '未选'}）` : 'remote（外部 API）'
+      status.textContent = `${srcLabel} · 当前运行 kind=${embedding.kind || '-'}${embedding.degraded ? '（降级）' : ''}`
+      $('#md-source').value = source
+    }
+    // 模型列表
+    listBox.innerHTML = models.map((m) => {
+      const stateLabel = m.state === 'downloaded' ? `<span class="badge ok">✓ 已下载</span>` : m.state === 'partial' ? `<span class="badge warn">◐ 未完成</span>` : `<span class="badge">未下载</span>`
+      const sizeFmt = m.totalBytes >= 1e6 ? `${(m.totalBytes / 1e6).toFixed(0)}MB` : `${Math.round(m.totalBytes / 1e3)}KB`
+      const btns = m.state === 'downloaded'
+        ? `<button class="btn sm ghost" data-md-del="${esc(m.id)}">删除</button> <button class="btn sm" data-md-use="${esc(m.id)}">选用</button>`
+        : `<button class="btn sm" data-md-dl="${esc(m.id)}">${m.state === 'partial' ? '继续下载' : '下载'}</button>`
+      return `<div class="row" style="align-items:flex-start;margin:8px 0">
+        <div style="flex:1">
+          <div><strong>${esc(m.name)}</strong> <span class="hint">dims=${m.dims} · ${sizeFmt} · ${(m.tags || []).join('/')}</span></div>
+          <div class="hint">${esc(m.description || '')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">${stateLabel}${btns}</div>
+      </div>`
+    }).join('') || emptyBox('暂无可用模型', '白名单模型目录为空')
+    // 进度
+    const progBox = $('#md-progress')
+    if (progress && progress.phase && progress.phase !== 'done') {
+      progBox.style.display = 'block'
+      const pct = progress.overallTotal ? Math.min(100, Math.round((progress.overallReceived / progress.overallTotal) * 100)) : 0
+      progBox.innerHTML = `<div>⏳ 下载 ${esc(progress.modelId)}：文件 ${progress.fileIndex}/${progress.fileCount} · ${pct}%（${fmtBytes(progress.overallReceived)} / ${fmtBytes(progress.overallTotal)}）</div>
+        <button class="btn sm ghost" data-md-cancel="1">取消</button>`
+    } else {
+      progBox.style.display = 'none'
+    }
+    // 若在下载中，1s 轮询刷新
+    if (progress && progress.phase && progress.phase !== 'done' && progress.phase !== 'error') {
+      clearTimeout(_mdPolling)
+      _mdPolling = setTimeout(renderModelsCard, 1000)
+    }
+  } catch (e) {
+    listBox.innerHTML = `<div class="alert err">加载模型失败：${esc(e.message)}</div>`
+  }
+}
+
+function initModelsCard() {
+  document.addEventListener('click', async (e) => {
+    const cancelBtn = e.target.closest('[data-md-cancel]')
+    if (cancelBtn) {
+      try { await api.modelCancel(); renderModelsCard() } catch (err) { toast(`取消失败：${err.message}`) }
+      return
+    }
+    const use = e.target.closest('[data-md-use]')
+    if (use) {
+      try {
+        const r = await api.modelSwitch('local', use.dataset.mdUse)
+        toast(`已切换 local/${r.model}${r.needs_reindex ? '，需重建索引' : ''}`)
+        renderModelsCard(); loadStats()
+      } catch (err) { toast(`切换失败：${err.message}`) }
+      return
+    }
+    const del = e.target.closest('[data-md-del]')
+    if (del) {
+      if (del.dataset.armed !== '1') {
+        del.dataset.armed = '1'
+        const orig = del.textContent
+        del.textContent = '确认删除？'
+        setTimeout(() => { if (del.dataset.armed === '1') { delete del.dataset.armed; del.textContent = orig } }, 3500)
+        return
+      }
+      delete del.dataset.armed
+      try { await api.modelDelete(del.dataset.mdDel); toast('已删除模型'); renderModelsCard() }
+      catch (err) { toast(`删除失败：${err.message}`) }
+      return
+    }
+    const dl = e.target.closest('[data-md-dl]')
+    if (dl) {
+      const btn = dl
+      btn.disabled = true
+      try {
+        // 串行下载（完成后立即刷新；若较大则由轮询跟进）
+        const r = await api.modelDownload(dl.dataset.mdDl)
+        renderModelsCard(); loadStats()
+        if (r?.error) toast(`下载失败：${r.error}`)
+      } catch (err) { toast(`下载失败：${err.message}`) }
+      return
+    }
+  })
+  $('#md-switch')?.addEventListener('click', async () => {
+    const source = $('#md-source').value
+    const useBtn = document.querySelector('[data-md-use]')
+    const modelId = useBtn ? null : source === 'local' ? null : null
+    try {
+      const r = await api.modelSwitch(source, modelId)
+      toast(`已切换嵌入源 ${source}${r.kind ? `（kind=${r.kind}${r.degraded ? '/降级' : ''}）` : ''}${r.needs_reindex ? '，需重建索引' : ''}`)
+      renderModelsCard(); loadStats()
+    } catch (err) { toast(`切换失败：${err.message}`) }
+  })
+}
+
 /* ---------------- 初始化 ---------------- */
-function initNav() {
-  $$('.breadcrumb .crumb[data-panel]').forEach((nav) => {
+function initNav() {  $$('.breadcrumb .crumb[data-panel]').forEach((nav) => {
     const activate = () => {
       $$('.breadcrumb .crumb[data-panel]').forEach((n) => n.classList.remove('active'))
       nav.classList.add('active')
@@ -1030,6 +1136,7 @@ async function init() {
   initNav()
   initLvlTabs()
   initEvents()
+  initModelsCard()
   setupImport()
   initTransferModal()
   // 服务健康检查（离线时 toast 由各 API 调用报错提示）
