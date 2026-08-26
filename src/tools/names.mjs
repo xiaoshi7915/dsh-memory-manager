@@ -13,6 +13,7 @@ export const MM_NAMES = Object.freeze({
   search: 'mm_search',
   get_recent: 'mm_get_recent',
   summarize: 'mm_summarize',
+  distill: 'mm_distill',
   delete: 'mm_delete',
   update_importance: 'mm_update_importance',
   stats: 'mm_stats',

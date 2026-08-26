@@ -86,6 +86,8 @@ export class MemoryApi {
   modelCancel() { return this.post('/api/memory/models/cancel', {}) }
   modelSwitch(source, modelId) { return this.post('/api/memory/models/switch', { source, modelId }) }
   modelDelete(id) { return this.delete(`/api/memory/models?id=${encodeURIComponent(id)}`) }
+  // P8 分层蒸馏
+  distill(session, family) { return this.post('/api/memory/distill', { session, family }) }
   saveConfig(body) { return this.post('/api/memory/config', body) }
   exportBackup(format = 'json') {
     const q = format === 'jsonl' ? '?format=jsonl' : ''

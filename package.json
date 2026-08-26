@@ -35,6 +35,7 @@
     "logs": "node scripts/logs-test.mjs",
     "modes": "node scripts/modes-test.mjs",
     "models": "node scripts/models-test.mjs",
+    "distill": "node scripts/distill-test.mjs",
     "layered": "node scripts/layered-endpoints-test.mjs",
     "gui:layered": "node scripts/gui-layered-logic-test.mjs",
     "observability": "node scripts/agent-observability-test.mjs",

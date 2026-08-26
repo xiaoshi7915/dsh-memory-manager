@@ -667,6 +667,26 @@ function initModeControl() {
   })
 }
 
+/* P8 分层蒸馏控制（L0→L1→L2→L3，宿主 LLM）。 */
+function initDistillControl() {
+  const status = $('#distill-status')
+  const sid = () => ($('#distill-session').value || '').trim() || 'default'
+  $('#distill-run')?.addEventListener('click', async () => {
+    const btn = $('#distill-run')
+    btn.disabled = true
+    if (status) status.textContent = '蒸馏中…（需宿主 LLM）'
+    try {
+      const r = await api.distill(sid(), $('#distill-family').value)
+      if (status) status.textContent = `完成：L0=${r.l0.appended} 轮 · L1=${r.l1.extracted} 条 · L2=${r.l2.scenes} 个 · L3=${r.l3.written ? '✓' : '—'}`
+      loadStats()
+    } catch (e) {
+      if (status) status.textContent = `蒸馏失败：${e.message}`
+    } finally {
+      btn.disabled = false
+    }
+  })
+}
+
 /* ---------------- 分层记忆视图（P3：只读直连 layered 真实数据） ---------------- */
 
 const L1_TYPE_LABELS = {
@@ -1148,6 +1168,7 @@ async function init() {
   initLvlTabs()
   initEvents()
   initModelsCard()
+  initDistillControl()
   setupImport()
   initTransferModal()
   // 服务健康检查（离线时 toast 由各 API 调用报错提示）

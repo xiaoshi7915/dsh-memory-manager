@@ -13,6 +13,7 @@ import { MemoryStore } from './store.mjs'
 import { InvertedIndex } from './inverted.mjs'
 import { search } from './search.mjs'
 import { summarizeSession } from './summarize.mjs'
+import { runDistill } from './distill.mjs'
 import { Lifecycle } from './lifecycle.mjs'
 import { exportBackup, importBackup } from './io.mjs'
 import { stats as collectStats } from './stats.mjs'
@@ -302,6 +303,11 @@ export class MemoryEngine {
   /** 摘要并入库（支持可选 LLM 生成式摘要）。 */
   async summarize(sessionId, opts = {}) {
     return summarizeSession(this, sessionId ?? 'default', opts)
+  }
+
+  /** 蒸馏管线（P8）：L0 持久化 → L1 抽取 → L2 场景 → L3 画像。 */
+  async distill(sessionId, opts = {}) {
+    return runDistill(this, sessionId ?? 'default', opts)
   }
 
   /** 删除：按 ids 或条件。 */

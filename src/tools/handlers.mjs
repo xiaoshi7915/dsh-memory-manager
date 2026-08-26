@@ -76,6 +76,20 @@ export const memory_summarize = wrap(async (args, ctx) => {
   return ctx.engine.summarize(sessionId, { count: args.count, llm: ctx.llmSummarize })
 })
 
+/** memory_distill：分层蒸馏（P8）L0→L1→L2→L3，复用 llmSummarize（护栏包裹的宿主 LLM）。 */
+export const memory_distill = wrap(async (args, ctx) => {
+  const sessionId = typeof args.session_id === 'string' && args.session_id ? args.session_id : ctx.sessionId
+  const family = args.family === 'work' ? 'work' : 'chat'
+  const r = await ctx.engine.distill(sessionId, { llm: ctx.llmSummarize, family })
+  return {
+    l0_appended: r.l0.appended,
+    l1_extracted: r.l1.extracted,
+    l2_scenes: r.l2.scenes,
+    l3_written: r.l3.written,
+    family,
+  }
+})
+
 /** memory_delete：按 ID 或条件批量删除。 */
 export const memory_delete = wrap(async (args, ctx) => {
   const sessionId = typeof args.session_id === 'string' && args.session_id ? args.session_id : ctx.sessionId
@@ -103,6 +117,7 @@ const IMPL = {
   search: memory_search,
   get_recent: memory_get_recent,
   summarize: memory_summarize,
+  distill: memory_distill,
   delete: memory_delete,
   update_importance: memory_update_importance,
   stats: memory_stats,

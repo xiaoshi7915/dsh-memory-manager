@@ -136,6 +136,25 @@ const TOOL_DEFS = [
     },
   },
   {
+    key: 'distill',
+    name: MM_NAMES.distill,
+    description: '对指定会话执行分层蒸馏（P8）：L0 原始对话持久化 → L1 原子记忆抽取 → L2 场景整合 → L3 画像生成，全部由 LLM 蒸馏。与 mm_summarize（短期→L1 压缩）互补。用户要求"蒸馏记忆/整理分层记忆/生成画像场景"时调用。',
+    parameters: {
+      session_id: str('会话 ID，缺省为当前会话'),
+      family: str('记忆域：chat=用户个人画像 / work=团队工作准则，缺省 chat'),
+    },
+    output: obj({
+      l0_appended: int('L0 持久化轮次数'),
+      l1_extracted: int('L1 抽取原子记忆条数'),
+      l2_scenes: int('L2 场景数'),
+      l3_written: bool('L3 画像是否生成'),
+      family: str('记忆域'),
+    }),
+    render(_args, v) {
+      return text(`分层蒸馏完成（${v.family}）：L0 持久化 ${v.l0_appended} 轮 · L1 抽取 ${v.l1_extracted} 条 · L2 场景 ${v.l2_scenes} 个 · L3 画像${v.l3_written ? '已生成' : '未生成'}`)
+    },
+  },
+  {
     key: 'delete',
     name: MM_NAMES.delete,
     description: '按 ID 删除单条记忆，或按条件（会话/标签/全局/时间/重要性）批量删除。用户说"删除关于…的记忆/忘掉…/清空记忆"时调用。',

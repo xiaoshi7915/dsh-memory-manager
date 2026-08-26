@@ -60,6 +60,25 @@
             </div>
             <div class="hint" style="margin-top:8px">off = 该会话对记忆系统完全隐身；auto = 跟随共存协调；chat/work = 强制捕获与蒸馏。</div>
           </div>
+          <!-- P8 分层蒸馏（L0→L1→L2→L3，LLM） -->
+          <div class="card" id="distill-card" style="margin-bottom:16px">
+            <div class="lvl-ov-head">🧬 分层蒸馏</div>
+            <div class="toolbar" style="margin:8px 0 0">
+              <label class="field"><span>会话</span>
+                <input id="distill-session" type="text" placeholder="留空 = 默认会话" style="width:180px" />
+              </label>
+              <label class="field"><span>记忆域</span>
+                <select id="distill-family" style="min-width:110px">
+                  <option value="chat">chat（用户画像）</option>
+                  <option value="work">work（工作准则）</option>
+                </select>
+              </label>
+              <button class="btn" id="distill-run">蒸馏</button>
+              <div class="grow"></div>
+              <span class="hint" id="distill-status"></span>
+            </div>
+            <div class="hint" style="margin-top:8px">把当前会话短期窗口蒸馏为 L0 原始对话 + L1 原子记忆 + L2 场景 + L3 画像（需宿主 LLM；与 mm_summarize 摘要互补）。</div>
+          </div>
           <div class="stat-strip">
             <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
             <div class="stat"><div class="num" id="st-st">-</div><div class="lbl">短期 tokens</div></div>

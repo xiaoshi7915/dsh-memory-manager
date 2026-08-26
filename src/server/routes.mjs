@@ -431,6 +431,16 @@ async function handle(req, res, getEngine) {
     sendJson(res, 200, r)
     return
   }
+  // P8 蒸馏管线：L0 持久化 → L1 抽取 → L2 场景 → L3 画像
+  if (method === 'POST' && rel === 'distill') {
+    const body = await readJsonBody(req)
+    const sid = typeof body.session === 'string' && body.session ? body.session : 'default'
+    const family = body.family === 'work' ? 'work' : 'chat'
+    const llm = (typeof body.llm === 'function') ? body.llm : null // 测试/调用方注入
+    const r = await engine.distill(sid, { llm, family })
+    sendJson(res, 200, { session_id: sid, family, l0: r.l0, l1: r.l1, l2: r.l2, l3: r.l3 })
+    return
+  }
   // 清理
   if (method === 'POST' && rel === 'cleanup') {
     sendJson(res, 200, await engine.runLifecycle())
