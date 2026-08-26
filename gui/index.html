@@ -22,6 +22,32 @@
       <div class="content">
         <!-- 记忆浏览（含内嵌语义搜索 + 导入导出入口 + 分层 Tab） -->
         <section class="panel active" id="panel-browser">
+          <!-- 顶部操作栏：语义检索 + 导入导出（常驻，不受层级 Tab 切换影响） -->
+          <div class="card" id="top-actions" style="margin-bottom:14px">
+            <div class="search-box">
+              <input id="sq-input" type="text" placeholder="🔍 语义检索记忆，例如：我喜欢用什么语言做数据分析？" />
+              <button class="btn" id="sq-btn">检索</button>
+              <button class="btn ghost sm" id="sq-clear" hidden>清除检索</button>
+              <div class="grow"></div>
+              <label class="field" style="margin:0 10px"><span>会话</span>
+                <input id="sq-session" type="text" placeholder="留空 = 全部会话" style="width:150px" />
+              </label>
+              <button class="btn ghost" id="transfer-btn">⇅ 导入导出</button>
+            </div>
+            <div class="toolbar" style="margin:8px 0 0">
+              <label class="field"><span>Top-K</span>
+                <input id="sq-topk" type="number" min="1" max="20" value="5" style="width:80px" />
+              </label>
+              <label class="field"><span>阈值</span>
+                <input id="sq-thr" type="number" min="0" max="1" step="0.05" value="0.4" style="width:80px" />
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;margin-top:16px">
+                <span class="switch"><input type="checkbox" id="sq-global" checked/><span class="slider"></span></span>含全局记忆
+              </label>
+              <div class="grow"></div>
+              <span class="hint" id="sq-note"></span>
+            </div>
+          </div>
           <!-- 层级 Tab（P1 骨架；L0/L1/L2/L3/日志 真实数据在后续阶段接入） -->
           <div class="lvl-tabs" id="lvl-tabs" role="tablist" aria-label="记忆层级">
             <span class="lvl-tab active" data-lvl="overview" role="tab" tabindex="0" aria-selected="true">概览</span>
@@ -33,8 +59,18 @@
           </div>
           <div class="lvl-views">
           <div class="lvl-view" id="lvl-overview">
-          <!-- layered 分层汇总（P3 只读；数据不可用时留空） -->
-          <div id="layered-overview"></div>
+          <!-- 统计数据（manager 长期/短期 + 分层 L0-L3 + 档位，整合为一卡） -->
+          <div class="card" id="stats-card" style="margin-bottom:16px">
+            <div class="lvl-ov-head">📊 统计数据</div>
+            <div class="stat-strip" style="border:none;padding:8px 0 0">
+              <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
+              <div class="stat"><div class="num" id="st-lt">-</div><div class="lbl">长期记忆</div></div>
+              <div class="stat"><div class="num" id="st-st">-</div><div class="lbl">短期 tokens</div></div>
+              <div class="stat"><div class="num" id="st-size">-</div><div class="lbl">存储占用</div></div>
+              <div class="stat"><div class="num" id="st-emb-model">-</div><div class="lbl">嵌入模型</div></div>
+            </div>
+            <div id="stats-layered" style="margin-top:10px"></div>
+          </div>
           <!-- P6 会话档位（manager 自己的 auto/chat/work/off） -->
           <div class="card" id="mode-card" style="margin-bottom:16px">
             <div class="lvl-ov-head">🎚️ 会话记忆档位</div>
@@ -76,36 +112,6 @@
             </div>
             <div class="hint" style="margin-top:8px">把当前会话短期窗口蒸馏为 L0 原始对话 + L1 原子记忆 + L2 场景 + L3 画像（需宿主 LLM；与 mm_summarize 摘要互补）。</div>
           </div>
-          <div class="stat-strip">
-            <div class="stat"><div class="num" id="st-total">-</div><div class="lbl">记忆总数</div></div>
-            <div class="stat"><div class="num" id="st-st">-</div><div class="lbl">短期 tokens</div></div>
-            <div class="stat"><div class="num" id="st-lt">-</div><div class="lbl">长期记忆</div></div>
-            <div class="stat"><div class="num" id="st-size">-</div><div class="lbl">存储占用</div></div>
-            <div class="stat"><div class="num" id="st-emb">-</div><div class="lbl">嵌入模型</div></div>
-          </div>
-
-          <!-- 内嵌语义搜索（搜索参数在此选择） -->
-          <div class="card" id="search-card">
-            <div class="search-box">
-              <input id="sq-input" type="text" placeholder="🔍 搜索记忆，例如：我喜欢用什么语言做数据分析？" />
-              <button class="btn" id="sq-btn">检索</button>
-              <button class="btn ghost sm" id="sq-clear" hidden>清除检索</button>
-            </div>
-            <div class="toolbar" style="margin:12px 0 0">
-              <label class="field"><span>Top-K</span>
-                <input id="sq-topk" type="number" min="1" max="20" value="5" style="width:80px" />
-              </label>
-              <label class="field"><span>阈值</span>
-                <input id="sq-thr" type="number" min="0" max="1" step="0.05" value="0.4" style="width:80px" />
-              </label>
-              <label class="field"><span>会话</span>
-                <input id="sq-session" type="text" placeholder="留空 = 全部会话" style="width:160px" />
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;margin-top:16px">
-                <span class="switch"><input type="checkbox" id="sq-global" checked/><span class="slider"></span></span>含全局记忆
-              </label>
-            </div>
-          </div>
 
           <div class="toolbar">
             <select id="f-session" style="min-width:150px"><option value="">全部会话</option></select>
@@ -113,7 +119,6 @@
             <label class="chip clickable"><input type="radio" name="f-global" value="1" style="display:none"/>🌍 全局</label>
             <label class="chip clickable"><input type="radio" name="f-global" value="0" style="display:none"/>🔒 本地</label>
             <div class="grow"></div>
-            <button class="btn ghost sm" id="transfer-btn">⇅ 导入导出</button>
             <button class="btn ghost sm" id="browse-refresh">刷新</button>
           </div>
           <div class="toolbar" id="f-tags"></div>

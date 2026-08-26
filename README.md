@@ -22,7 +22,7 @@
 | 🎚️ 会话记忆档位 | 每会话 `auto/chat/work/off`（`session-modes.json` 原子写），全链路 gating（捕获隐身 / 蒸馏暂停 / 召回过滤） |
 | 🎯 三态嵌入源 | `off/remote/local`（`embedding-source.json`）：本地 ONNX 推理（onnxruntime-node 可选）、远程 API、纯关键词；白名单 3 款模型（bge-small-zh-v1.5 / embeddinggemma-300m / bge-m3）断点续传下载 + 逐文件 sha256 校验 |
 | 🧬 分层蒸馏 | LLM（宿主 `ctx.llm`）管线：L0 对话持久化 → L1 原子记忆抽取 → L2 场景 → L3 画像；与 `mm_summarize` 摘要并存 |
-| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置，深浅双主题（纯跟随系统）；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI）；记忆浏览内嵌**层级 Tab**（概览/L0 对话/L1 原子记忆/L2 场景/L3 画像/日志）：layered 在场只读其真实分层数据，缺席则读**本插件自持蒸馏数据**（仅装本插件也全功能可跑） |
+| 🌐 Web GUI | 记忆浏览 / 语义搜索 / 导入导出 / 设置，深浅双主题（纯跟随系统）；记忆浏览与搜索结果均支持**真分页**（每页 20/50/100/200，搜索页大小=Top-K）；**DSH 设置侧边栏「记忆管理」入口**（客户端插件注入 `settings.section`，iframe 内嵌 GUI）；**顶部常驻操作栏**（语义检索 + ⇅ 导入导出，不随层级 Tab 切换）；概览**统计数据整合为一卡**（本插件长期/短期/存储/嵌入 + 分层 L0-L3/档位）；记忆浏览内嵌**层级 Tab**（概览/L0 对话/L1 原子记忆/L2 场景/L3 画像/日志）：数据源透明——沿用既有分层数据或本插件自持蒸馏数据，页面不出现第三方插件品牌；**日志融合读取**（既有分层 `~/.dsh/memory/memory.log` + 本插件日志按时间倒序、带来源标记） |
 
 ---
 
@@ -201,7 +201,8 @@ npm run seed       # 批量种入 2000 条演示记忆（默认 ~/.dsh/memory-ma
 - **重建索引**：更换嵌入模型后点「重建索引」按新模型对全库重嵌入并覆写向量索引；重建完成前检索自动降级为关键词匹配（不报错、不返回旧模型乱序结果）。
 - **明文缓存**：搜索高频解密场景以 `id → 明文` 内存缓存加速。
 - **加密存储**：默认加密；`master_password` 提供则 scrypt 派生，否则自动生成随机密钥（`.key`，0600）。**加密守卫**：库里有记录时禁止修改主密码/加密开关（避免密钥变更静默损坏存量），解密失败显式标记并计入 `stats.decrypt_failed`；`config.json` 原子写 + 0600。
-- **分层浏览（自持 / 共存双源）**：Web GUI「记忆浏览」内嵌层级 Tab（概览/L0 对话/L1 原子记忆/L2 场景/L3 画像/日志）。数据源策略：layered 在场 → 只读直连其真实数据（`~/.dsh/memory`：readOnly SQLite + JSONL/MD 解析，fail-closed 绝不返回猜测数据）；layered 缺席 → 读**本插件自持蒸馏数据**（`conversations/` + `memories.db source='distill'` + `scenes/` + `persona-*.md`），`stats.source` 区分 `layered|self`。分层浏览不做导入/清理/重建索引。
+- **分层浏览（自持 / 共存双源）**：Web GUI「记忆浏览」内嵌层级 Tab（概览/L0 对话/L1 原子记忆/L2 场景/L3 画像/日志）。数据源策略：沿用既有分层数据（`~/.dsh/memory`：readOnly SQLite + JSONL/MD 解析，fail-closed 绝不返回猜测数据）；缺席则读**本插件自持蒸馏数据**（`conversations/` + `memories.db source='distill'` + `scenes/` + `persona-*.md`）。分层浏览不做导入/清理/重建索引。GUI 不再展示第三方插件品牌，统计数据整合进统一卡，语义检索与导入导出常驻顶部。
+- **日志融合读取**：`/api/memory/logs` 同时读 `~/.dsh/memory/memory.log`（既有分层真实日志）与本插件 `memory.log`，按时间倒序合并、每条带 `source`（layered/manager）标记并返回各源计数；卸载后仍能读到既有历史日志，新日志由本插件续写。
 - **分层蒸馏（P8）**：`mm_distill` 走宿主 `ctx.llm`（护栏包裹，零额外依赖）：L0 会话轮次镜像为日期 JSONL → L1 抽取原子记忆（family/type/priority，入库 `source='distill'`，family/type 编码进 tags 保持 schema 稳定）→ L2 场景 `.md`（META 前块 + 安全文件名防穿越）→ L3 画像（纯正文，同 layered 布局）。与 `mm_summarize`（短期→L1 摘要）并存互补。
 - **三态嵌入源（P7）**：`off/remote/local`。本地 ONNX 推理**可选依赖**（`onnxruntime-node` 动态加载，未装明确降级哈希并提示，同 dsh-layered-memory 的处理——它也是 worker 内动态加载，非硬依赖）；模型下载白名单 3 款（bge-small-zh-v1.5 / embeddinggemma-300m / bge-m3），逐文件 size+sha256+revision 锁定，Range 断点续传 + 流式校验（失配删重下）+ 磁盘门禁 + 取消保留断点。
 - **会话记忆档位（P6）**：每会话 `auto/chat/work/off`，全链路 gating（捕获隐身 / 蒸馏暂停 / 召回过滤），`session-modes.json` 原子写 + 串行队列 + 90 天剪枝 + 500 会话上限。

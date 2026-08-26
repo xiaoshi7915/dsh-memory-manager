@@ -92,9 +92,10 @@ check('convLine assistant 中文', L.convLine({ role: 'assistant', recorded_at: 
 
 // ---- 概览渲染（真实 api stub） ----
 {
-  const box = el('layered-overview')
+  const box = el('stats-layered')
   await L.loadLayeredOverview()
-  check('loadLayeredOverview 填卡', box.innerHTML.includes('分层记忆（dsh-layered-memory）') && box.innerHTML.includes('L1 原子记忆') && box.innerHTML.includes('默认记忆模式'))
+  check('loadLayeredOverview 填卡', box.innerHTML.includes('L1 原子记忆') && box.innerHTML.includes('默认记忆模式'))
+  check('loadLayeredOverview 无品牌文案', !box.innerHTML.includes('dsh-layered'))
 }
 
 // ---- L1 视图渲染 ----

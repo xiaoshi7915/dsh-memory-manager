@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createLayeredReader } from '../core/layered.mjs'
+import { createLayeredReader, layeredBaseDir } from '../core/layered.mjs'
 import { createSelfLayerReader } from '../core/self-layered.mjs'
 import { readLog } from '../util/filelog.mjs'
 
@@ -276,7 +276,11 @@ async function handle(req, res, getEngine) {
     const offset = Number(sp.get('offset')) || 0
     const limit = Number(sp.get('limit')) || 100
     const level = sp.get('level') || undefined
-    sendJson(res, 200, readLog(engine.baseDir, { offset, limit, level }))
+    // 融合读取：layered 真实日志（~/.dsh/memory/memory.log）优先 + 本插件日志，按时间倒序带 source 标记。
+    // 卸载 layered 后仍能读到其历史日志，新日志由本插件续写。
+    const layeredDir = layeredBaseDir()
+    const sources = [{ dir: layeredDir, source: 'layered' }, { dir: engine.baseDir, source: 'manager' }]
+    sendJson(res, 200, readLog(sources, { offset, limit, level }))
     return
   }
   // 单条

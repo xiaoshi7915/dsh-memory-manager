@@ -333,6 +333,9 @@ html[data-theme='dark'] .alert.ok { background: #123325; color: #57d4a2; }
 .log-badge.err { background: rgba(255,82,82,.15); color: #ff5252; }
 .log-line .log-ts { flex: none; color: var(--text-3); font-size: 11px; }
 .log-line .log-msg { flex: 1; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.log-line .log-src { flex: none; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-2, #f0f0f0); color: var(--text-2); margin-right: 6px; }
+.log-line .log-src.layered { background: #e3f2fd; color: #0b6bcb; }
+.log-line .log-src.manager { background: #e8f5e9; color: #1b7f3b; }
 .log-line.warn { border-left: 3px solid #ffc107; }
 .log-line.err { border-left: 3px solid #ff5252; }
 

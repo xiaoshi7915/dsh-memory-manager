@@ -3,6 +3,7 @@
 //  2. 轮转（超 2MB 触发 rename → memory.log.1，读回合并两段）
 //  3. REST GET /api/memory/logs 分页 + 级别过滤
 //  4. 引擎初始化写入 memory.log（engine.log 存在）
+//  5. 融合读取：readLog 多源合并（layered 真实日志 + 本插件日志，按时间倒序带 source）
 import { mkdtempSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -77,6 +78,25 @@ const check = (name, cond, detail = '') => { results.push({ name, ok: !!cond });
   const r2 = await call('/api/memory/logs?level=error&limit=5')
   check('3 REST level+limit 过滤', r2.status === 200 && r2.body.items.every((i) => i.level === 'error'))
   await e.close()
+}
+
+// ---- 5. 融合读取（多源合并，layered 真实日志优先 + 本插件日志） ----
+{
+  const { withFileLog, readLog } = await import('../src/util/filelog.mjs')
+  const ldir = mkdtempSync(join(tmpdir(), 'dsh-mem-lsrc-'))
+  const mdir = mkdtempSync(join(tmpdir(), 'dsh-mem-msrc-'))
+  const ll = withFileLog(ldir, { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} })
+  const ml = withFileLog(mdir, { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} })
+  ll.info('分层日志条目A')
+  ll.error('分层日志错误B')
+  ml.info('本插件日志条目C')
+  const r = readLog([{ dir: ldir, source: 'layered' }, { dir: mdir, source: 'manager' }], { limit: 50 })
+  check('5 双源合并 total>=3', r.total >= 3, `total=${r.total}`)
+  check('5 双源 source 标记', r.items.some((i) => i.source === 'layered') && r.items.some((i) => i.source === 'manager'), JSON.stringify(r.items.map((i) => i.source)))
+  check('5 返回 sources 计数', (r.sources || []).length === 2 && r.sources.find((x) => x.source === 'layered')?.count >= 2 && r.sources.find((x) => x.source === 'manager')?.count >= 1, JSON.stringify(r.sources))
+  check('5 按时间倒序（新在前）', r.items.every((x, i) => i === 0 || (x.ts || 0) <= (r.items[i - 1].ts || Infinity)), JSON.stringify(r.items.slice(0, 2).map((i) => i.ts)))
+  const onlyLayered = readLog([{ dir: ldir, source: 'layered' }, { dir: mdir, source: 'manager' }], { level: 'error' })
+  check('5 级别过滤跨源', onlyLayered.items.every((i) => i.level === 'error') && onlyLayered.sources.every((s) => s.source === 'layered'), JSON.stringify(onlyLayered.sources))
 }
 
 const passed = results.filter((r) => r.ok).length

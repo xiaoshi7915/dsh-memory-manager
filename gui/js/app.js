@@ -195,7 +195,7 @@ async function loadStats() {
     $('#st-st').textContent = `${s.short_term_tokens} tokens`
     $('#st-lt').textContent = s.long_term_count
     $('#st-size').textContent = fmtBytes(s.storage_size_mb)
-    $('#st-emb').textContent = s.embedding_status === 'degraded' ? '降级(哈希)' : s.embedding_model
+    $('#st-emb-model').textContent = s.embedding_status === 'degraded' ? '降级(哈希)' : s.embedding_model
     $('#st-reindex-note').textContent = s.needs_reindex ? '⚠️ 需重建（模型已变更）' : (s.long_term_count > 0 ? '✓ 已同步' : '')
   } catch { /* 忽略 */ }
 }
@@ -704,14 +704,14 @@ function lvlRenderer() {
   return { seq, render: (data) => (seq === state.lvl.seq ? data : null) }
 }
 
-/** 分层不可用提示（fail-closed 时统一展示：layered 与自持蒸馏数据均缺席）。 */
+/** 分层不可用提示（fail-closed 时统一展示：分层数据与自持蒸馏数据均缺席）。 */
 function layeredUnavailable(box, msg) {
-  box.innerHTML = `<div class="alert warn">分层记忆数据不可用：${esc(msg || '')}（未安装 dsh-layered-memory，且本插件尚无自持蒸馏数据）</div>`
+  box.innerHTML = `<div class="alert warn">分层数据不可用：${esc(msg || '')}（尚无分层记忆数据）</div>`
 }
 
-/** 概览层的分层汇总卡（在 manager 统计条之上）。 */
+/** 概览层：把分层统计数据并入统一「📊 统计数据」卡（manager 统计条之下）。 */
 async function loadLayeredOverview() {
-  const box = $('#layered-overview')
+  const box = $('#stats-layered')
   if (!box) return
   try {
     const s = await api.layeredStats()
@@ -720,29 +720,25 @@ async function loadLayeredOverview() {
       return
     }
     const isSelf = s.source === 'self'
-    const srcTitle = isSelf ? '🧬 分层记忆（manager 自持蒸馏）' : '🧬 分层记忆（dsh-layered-memory）'
     const srcHint = isSelf
       ? '数据由本插件自身蒸馏产出（L0 对话 / L1 原子记忆 / L2 场景 / L3 画像），独立可用。'
-      : '该层为只读视图（数据由 dsh-layered-memory 独占写）。编辑请在 layered 侧进行。'
+      : '该层为只读视图（沿用既有分层记忆数据）。编辑请通过「🧬 分层蒸馏」生成。'
     const types = Object.entries(s.l1.types || {})
       .sort((a, b) => L1_TYPE_ORDER.indexOf(a[0]) - L1_TYPE_ORDER.indexOf(b[0]) || b[1] - a[1])
       .map(([t, n]) => `<span class="chip">${l1TypeLabel(t)} ${n}</span>`).join(' ')
     const sessTop = (s.l0.bySession || []).slice(0, 3)
       .map((x) => `<span class="chip">${esc(x.id.slice(0, 12))}… ${x.count}</span>`).join(' ')
     box.innerHTML = `
-      <div class="card" style="margin-bottom:16px">
-        <div class="lvl-ov-head">${srcTitle}</div>
-        <div class="stat-strip" style="border:none;padding:8px 0 0">
-          <div class="stat"><div class="num">${s.l1.total}</div><div class="lbl">L1 原子记忆</div></div>
-          <div class="stat"><div class="num">${s.scenes.chat + s.scenes.work}</div><div class="lbl">L2 场景块</div></div>
-          <div class="stat"><div class="num">${s.persona.chat_chars + s.persona.work_chars}</div><div class="lbl">L3 画像字符</div></div>
-          <div class="stat"><div class="num">${s.l0.total}</div><div class="lbl">L0 消息</div></div>
-          <div class="stat"><div class="num">${esc(s.modes.default)}</div><div class="lbl">默认记忆模式</div></div>
-        </div>
-        ${types ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">L1 类型</span>${types}</div>` : ''}
-        ${sessTop ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">活跃会话</span>${sessTop}</div>` : ''}
-        <div class="hint" style="margin-top:8px">${srcHint}</div>
-      </div>`
+      <div class="stat-strip" style="border-top:1px solid var(--border,#ddd);border-radius:0;padding:8px 0 0">
+        <div class="stat"><div class="num">${s.l1.total}</div><div class="lbl">L1 原子记忆</div></div>
+        <div class="stat"><div class="num">${s.scenes.chat + s.scenes.work}</div><div class="lbl">L2 场景块</div></div>
+        <div class="stat"><div class="num">${s.persona.chat_chars + s.persona.work_chars}</div><div class="lbl">L3 画像字符</div></div>
+        <div class="stat"><div class="num">${s.l0.total}</div><div class="lbl">L0 消息</div></div>
+        <div class="stat"><div class="num">${esc(s.modes.default)}</div><div class="lbl">默认记忆模式</div></div>
+      </div>
+      ${types ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">L1 类型</span>${types}</div>` : ''}
+      ${sessTop ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">活跃会话</span>${sessTop}</div>` : ''}
+      <div class="hint" style="margin-top:8px">${srcHint}</div>`
   } catch (e) {
     box.innerHTML = ''
   }
@@ -804,7 +800,7 @@ async function renderL1Page() {
     s.total = data.total || 0
     if (data.items.length === 0 && s.total > 0 && s.page > 0) { s.page -= 1; return renderL1Page() }
     if (data.items.length === 0) {
-      listBox.innerHTML = emptyBox('L1 原子记忆为空', 'layered 尚未沉淀原子记忆')
+      listBox.innerHTML = emptyBox('L1 原子记忆为空', '尚未沉淀原子记忆')
     } else {
       listBox.innerHTML = `<div class="mem-list">${data.items.map((m) => l1Card(m)).join('')}</div>`
       bindL1Cards(listBox)
@@ -864,7 +860,7 @@ async function renderL2View() {
     const data = await api.layeredScenes({ family: state.lvl.scenes.family || undefined })
     if (render() === null) return
     if (data.items.length === 0) {
-      box.innerHTML = emptyBox('L2 场景为空', 'layered 尚未生成场景块')
+      box.innerHTML = emptyBox('L2 场景为空', '尚未生成场景块')
       return
     }
     box.innerHTML = `
@@ -1058,6 +1054,11 @@ function renderLogsView() {
       } else {
         listBox.innerHTML = `<div class="log-list">${data.items.map((l) => logLine(l)).join('')}</div>`
       }
+      // 来源说明（融合读取：既有分层日志 + 本插件日志）
+      const srcNote = (data.sources || []).length
+        ? `来源：${data.sources.map((x) => `${x.source}（${x.count} 条）`).join(' + ')}`
+        : `共 ${data.total} 条`
+      totalEl.textContent = srcNote
       renderPager(pager, {
         page: s.page, pageSize: s.pageSize, total: data.total, sizes: [20, 50, 100],
         onGo: (p) => { s.page = p; renderLogsView() },
@@ -1072,10 +1073,12 @@ function renderLogsView() {
 function logLine(l) {
   const lv = l.level === 'error' ? 'err' : l.level === 'warn' ? 'warn' : 'info'
   const ts = l.ts ? new Date(l.ts).toLocaleString() : ''
+  const src = l.source ? `<span class="log-src ${l.source === 'layered' ? 'layered' : 'manager'}">${l.source === 'layered' ? '分层' : '本插件'}</span>` : ''
   return `
   <div class="log-line ${lv}">
     <span class="log-badge ${lv}">${esc(l.level)}</span>
     <span class="log-ts">${esc(ts)}</span>
+    ${src}
     <span class="log-msg">${esc(l.message)}</span>
   </div>`
 }
