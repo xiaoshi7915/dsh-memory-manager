@@ -112,7 +112,7 @@ const check = (name, cond, detail = '') => { results.push({ name, ok: !!cond });
   const r = await distillPersona(e, 'chat', [{ name: '沟通偏好', summary: 'x' }], { llm })
   check('5 L3 画像写入', r.written === true && existsSync(r.path))
   const content = readFileSync(r.path, 'utf8')
-  check('5 画像含导航头', content.includes('## 🗺️ Scene Navigation'))
+  check('5 画像为纯正文（无导航头注入）', !content.includes('Scene Navigation'))
   check('5 画像含正文', content.includes('工作严谨'))
   await e.close()
 }

@@ -704,9 +704,9 @@ function lvlRenderer() {
   return { seq, render: (data) => (seq === state.lvl.seq ? data : null) }
 }
 
-/** 分层不可用提示（fail-closed 时统一展示）。 */
+/** 分层不可用提示（fail-closed 时统一展示：layered 与自持蒸馏数据均缺席）。 */
 function layeredUnavailable(box, msg) {
-  box.innerHTML = `<div class="alert warn">layered 记忆数据不可用：${esc(msg || '')}（未安装 dsh-layered-memory 或其数据目录不存在）</div>`
+  box.innerHTML = `<div class="alert warn">分层记忆数据不可用：${esc(msg || '')}（未安装 dsh-layered-memory，且本插件尚无自持蒸馏数据）</div>`
 }
 
 /** 概览层的分层汇总卡（在 manager 统计条之上）。 */
@@ -719,6 +719,11 @@ async function loadLayeredOverview() {
       box.innerHTML = ''
       return
     }
+    const isSelf = s.source === 'self'
+    const srcTitle = isSelf ? '🧬 分层记忆（manager 自持蒸馏）' : '🧬 分层记忆（dsh-layered-memory）'
+    const srcHint = isSelf
+      ? '数据由本插件自身蒸馏产出（L0 对话 / L1 原子记忆 / L2 场景 / L3 画像），独立可用。'
+      : '该层为只读视图（数据由 dsh-layered-memory 独占写）。编辑请在 layered 侧进行。'
     const types = Object.entries(s.l1.types || {})
       .sort((a, b) => L1_TYPE_ORDER.indexOf(a[0]) - L1_TYPE_ORDER.indexOf(b[0]) || b[1] - a[1])
       .map(([t, n]) => `<span class="chip">${l1TypeLabel(t)} ${n}</span>`).join(' ')
@@ -726,7 +731,7 @@ async function loadLayeredOverview() {
       .map((x) => `<span class="chip">${esc(x.id.slice(0, 12))}… ${x.count}</span>`).join(' ')
     box.innerHTML = `
       <div class="card" style="margin-bottom:16px">
-        <div class="lvl-ov-head">🧬 分层记忆（dsh-layered-memory）</div>
+        <div class="lvl-ov-head">${srcTitle}</div>
         <div class="stat-strip" style="border:none;padding:8px 0 0">
           <div class="stat"><div class="num">${s.l1.total}</div><div class="lbl">L1 原子记忆</div></div>
           <div class="stat"><div class="num">${s.scenes.chat + s.scenes.work}</div><div class="lbl">L2 场景块</div></div>
@@ -736,7 +741,7 @@ async function loadLayeredOverview() {
         </div>
         ${types ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">L1 类型</span>${types}</div>` : ''}
         ${sessTop ? `<div class="toolbar" style="margin:6px 0 0"><span class="hint">活跃会话</span>${sessTop}</div>` : ''}
-        <div class="hint" style="margin-top:8px">该层为只读视图（数据由 dsh-layered-memory 独占写）。编辑请在 layered 侧进行。</div>
+        <div class="hint" style="margin-top:8px">${srcHint}</div>
       </div>`
   } catch (e) {
     box.innerHTML = ''

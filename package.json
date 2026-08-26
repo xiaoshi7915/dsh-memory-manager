@@ -36,6 +36,8 @@
     "modes": "node scripts/modes-test.mjs",
     "models": "node scripts/models-test.mjs",
     "distill": "node scripts/distill-test.mjs",
+    "self-layered": "node scripts/self-layered-test.mjs",
+    "p9": "node scripts/p9-acceptance.mjs",
     "layered": "node scripts/layered-endpoints-test.mjs",
     "gui:layered": "node scripts/gui-layered-logic-test.mjs",
     "observability": "node scripts/agent-observability-test.mjs",

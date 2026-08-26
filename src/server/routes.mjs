@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createLayeredReader } from '../core/layered.mjs'
+import { createSelfLayerReader } from '../core/self-layered.mjs'
 import { readLog } from '../util/filelog.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -177,9 +178,12 @@ async function handle(req, res, getEngine) {
     return
   }
   // ---- layered 分层记忆（只读直连 dsh-layered-memory 真实数据；P2） ----
-  // 每次请求新建读取器：readOnly 打开很廉价，且避免跨请求持有句柄与 layered 并发读长事务。
+  // 数据源策略（P9 独立验收）：layered 在场 → 只读 layered；layered 缺席 → 降级读 manager 自持
+  // 蒸馏数据（SelfLayerReader）。GUI 通过 stats.source（layered|self）区分来源与提示。
   if (rel.startsWith('layered')) {
-    const lr = createLayeredReader()
+    const layeredLr = createLayeredReader()
+    const engine = getEngine()
+    const lr = layeredLr.isPresent() ? layeredLr : createSelfLayerReader({ baseDir: engine.baseDir })
     try {
       const lrel = rel.replace(/^layered\/?/, '')
       const sp = url.searchParams
@@ -246,7 +250,8 @@ async function handle(req, res, getEngine) {
       sendError(res, 'NOT_FOUND', 'Not found', 404)
       return
     } finally {
-      lr.close()
+      layeredLr.close()
+      if (lr !== layeredLr) lr.close()
     }
   }
   // 记忆列表（时间线，P3：SQL 级 LIMIT/OFFSET 真分页）

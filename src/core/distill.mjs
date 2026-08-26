@@ -198,7 +198,7 @@ export async function distillPersona(engine, family, scenes = [], { llm = null }
     ? '你是团队工作准则整合助手。把下面的工作场景整合为团队工作准则（Operating Doctrine）：核心原则、SOP、决策逻辑、边界与反模式。直接输出 Markdown 正文，不要代码块包裹，控制在 600 字内。'
     : '你是用户画像整合助手。把下面的个人场景整合为用户画像：核心特征、偏好、隐信号、演变。直接输出 Markdown 正文，不要代码块包裹，控制在 600 字内。'
   const body = await llm(`${system}\n\n场景摘要：\n${input}`)
-  const content = `## 🗺️ Scene Navigation\n*以下为画像导航（蒸馏生成）*\n\n${body}\n`
+  const content = `${body}\n`
   await fsp.writeFile(file, content, 'utf8')
   engine.log?.info?.(`[memory-manager] 蒸馏 L3 画像已写入（family=${family}）`)
   return { written: true, path: file }

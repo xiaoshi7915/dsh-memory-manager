@@ -25,7 +25,7 @@ const L1_TYPE_ORDER = ['persona', 'episodic', 'instruction', 'work_fact', 'work_
 const NAV_HEADER = '## 🗺️ Scene Navigation'
 
 /** 场景导航段：剥离到下一个空行或 ## 分隔（与 layered persona 的 stripSceneNavigation 语义一致）。 */
-function stripSceneNavigation(md) {
+export function stripSceneNavigation(md) {
   if (typeof md !== 'string') return md
   const idx = md.indexOf(NAV_HEADER)
   if (idx === -1) return md
@@ -49,7 +49,7 @@ export function parseSceneMeta(md) {
 }
 
 /** 拆解 L1 记录的 timestamps（[{start?,end?}] 或 number[]），返回起止毫秒时间戳。 */
-function recordTimeRange(rec) {
+export function recordTimeRange(rec) {
   const pick = (t) => (typeof t === 'number' && Number.isFinite(t) ? t : null)
   let ts = rec.timestamp_str ? Number(rec.timestamp_str) : NaN
   const start = pick(rec.timestamp_start) || (Number.isFinite(ts) ? ts : null)
